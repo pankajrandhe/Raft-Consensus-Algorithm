@@ -1,9 +1,3 @@
-//NOTE:
-// Don't forget to do type checking
-// Clear the structure from memory
-// Interleaving error in the SET command
-//wait for the next line on that thread only
-
 package main
 
 import (
