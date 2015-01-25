@@ -1,3 +1,9 @@
+//NOTE:
+// Don't forget to do type checking
+// Clear the structure from memory
+// Interleaving error in the SET command
+//wait for the next line on that thread only
+
 package main
 
 import (
@@ -123,14 +129,14 @@ func handleConnection(connection net.Conn, key_values map[string]*value_and_meta
 
 					arg2 = strings.Trim(command_split[3], "\r\n")
 					handleError(err)
-				} /*else {
+				} //else {
 
-					arg2 = strings.Trim(command_split[3], " ")
-					handleError(err)
+				//	arg2 = strings.Trim(command_split[3], " ")
+				//	handleError(err)
 
-					buffer_noreply = strings.Trim(command_split[4], "\r\n")
-					handleError(err)
-				}*/
+				//	buffer_noreply = strings.Trim(command_split[4], "\r\n")
+				//	handleError(err)
+				//}
 
 				//block this thread until we receive the value
 				//length_r, err2 := connection.Read(buffer[0:])
@@ -196,9 +202,22 @@ func handleConnection(connection net.Conn, key_values map[string]*value_and_meta
 				instance := key_values[arg1]
 				_, err1 := connection.Write([]byte("VALUE "+strconv.FormatInt(instance.version, 10)+" "+strconv.FormatInt(instance.exptime, 10)))
 				handleError(err1)
-				_, err2 := connection.Write([]byte(" "+instance.numbytes+"\r\n"+instance.value+"\r\n"))
-				handleError(err2)
-
+				//_, err2 := connection.Write([]byte(strconv.FormatInt(instance.version, 10)))
+				//handleError(err2)
+				//_, err3 := connection.Write([]byte(" "))
+				//handleError(err3)
+				//_, err4 := connection.Write([]byte(strconv.FormatInt(instance.exptime, 10)))
+				//handleError(err4)
+				_, err5 := connection.Write([]byte(" "))
+				handleError(err5)
+				_, err6 := connection.Write([]byte(instance.numbytes))
+				handleError(err6)
+				_, err7 := connection.Write([]byte("\r\n"))
+				handleError(err7)
+				_, err8 := connection.Write([]byte(instance.value))
+				handleError(err8)
+				_, err9 := connection.Write([]byte("\r\n"))
+				handleError(err9)
 			} else {
 
 				_, err1 := connection.Write([]byte("ERRNOTFOUND\r\n"))
@@ -339,4 +358,3 @@ func exp_timer(key string, key_values map[string]*value_and_metadata) {
 	// as soon as the timer expires delete the record
 	delete(key_values, key)
 }
-
