@@ -1,9 +1,3 @@
-//NOTE:
-// Don't forget to do type checking
-// Clear the structure from memory
-// Interleaving error in the SET command
-//wait for the next line on that thread only
-
 package main
 
 import (
@@ -17,7 +11,7 @@ import (
 
 // Lets first create the structure which will hold the value and all other meta-data for the key
 type value_and_metadata struct {
-	value    string
+	value    string //[]byte
 	exptime  int64
 	numbytes string
 	version  int64
@@ -26,15 +20,7 @@ type value_and_metadata struct {
 // Create the MAP to hold the keys, values and the associated meta-data
 var key_values map[string]*value_and_metadata
 
-
-var buffer_key string
-var buffer_noreply string
-
-var cas_buffer_key string
-var cas_buffer_noreply string
-
 func main() {
-
 
 	//var key_values map[string] *value_and_metadata
 	key_values = make(map[string]*value_and_metadata)
@@ -49,7 +35,7 @@ func main() {
 
 	//keep listening for the client request
 	for {
-		//var wait_flag bool = false
+
 		fmt.Println("Server listening...")
 
 		//if the request arrives accept the request from the client and create the connection object
@@ -57,129 +43,87 @@ func main() {
 		fmt.Println("req accepted")
 
 		if err1 != nil {
-			fmt.Println("err1")
+			handleError(err1)
 			continue
 		}
 
 		// Now handle the connection
 		go handleConnection(connection, key_values)
+		defer connection.Close()
 	}
 }
 
 func handleConnection(connection net.Conn, key_values map[string]*value_and_metadata) {
 
 	var buffer [1024]byte
-	var wait_flag bool = false
-	var cas_wait_flag bool = false
+	var err error
 
 	for {
 
 		var client_command string
-		var value string
 		var case_parameter string
 		var command_split []string
+		var length_r int
 
-		length_r, err2 := connection.Read(buffer[0:])
-		handleError(err2)
+		length_r, err = connection.Read(buffer[0:])
+		handleError(err)
 
-		if wait_flag == false && cas_wait_flag == false {
+		client_command = string(buffer[0:length_r])
+		command_split = strings.Split(client_command, " ")
 
-			client_command = string(buffer[0:length_r])
-			command_split = strings.Split(client_command, " ")
-			case_parameter = command_split[0]
-			fmt.Println("Client says: ", client_command)
-
-		} else {
-
-			if wait_flag == true {
-				value = string(buffer[0:length_r])
-				case_parameter = "set"
-				fmt.Println("Client says (V): ", value)
-			}
-
-			if cas_wait_flag == true {
-				fmt.Println("here CAS")
-				value = string(buffer[0:length_r])
-				case_parameter = "cas"
-				fmt.Println("Client says (V): ", value)
-			}
-
-		}
-
+		case_parameter = command_split[0]
+		fmt.Println("Client says:", client_command)
 
 		// Using the SWITCH-CASE statements to perform the operation based on the command
 
 		switch case_parameter {
 
 		case "set":
-
-			fmt.Println("Command is: SET")
-
 			var arg1 int64
 			var arg2 string
-			var err error
-			var ver int64 = rand.Int63n(50000)
+			var val string
+			var set_noreply string
 
-			if wait_flag == false {
+			var ver int64 = rand.Int63()
 
-				arg1, err = strconv.ParseInt(command_split[2], 10, 64)
+			arg1, err = strconv.ParseInt(command_split[2], 10, 64)
+			handleError(err)
+
+			if strings.Contains(command_split[3], "\r\n") {
+				arg := strings.Trim(command_split[3], "\r\n")
+				arg2 = (strings.Split(arg, "\r\n"))[0]
+				val = (strings.Split(arg, "\r\n"))[1]
+
+			} else {
+
+				arg2 = strings.Trim(command_split[3], " ")
+				set_noreply = strings.Trim(command_split[4], "\r\n")
+			}
+
+			/*keeping aside the delay condition for now */
+			// Read the second line from the client
+
+			//val_length, err = connection.Read(buffer1[0:])
+			//handleError(err)
+
+			//val = strings.Trim(string(buffer1[0:val_length]), "\r\n")
+
+			instance := value_and_metadata{val, arg1, arg2, ver} //val
+			ref_instance := &(instance)
+			key_values[string(command_split[1])] = ref_instance
+
+			if set_noreply != "noreply" {
+
+				fmt.Println(set_noreply)
+				_, err = connection.Write([]byte("OK " + strconv.FormatInt(key_values[string(command_split[1])].version, 10) + "\r\n")) //buffer[0:length_r])
+				fmt.Println("replied")
 				handleError(err)
-
-				if strings.Contains(command_split[3], "\r\n") {
-
-					arg2 = strings.Trim(command_split[3], "\r\n")
-					handleError(err)
-				} //else {
-
-				//	arg2 = strings.Trim(command_split[3], " ")
-				//	handleError(err)
-
-				//	buffer_noreply = strings.Trim(command_split[4], "\r\n")
-				//	handleError(err)
-				//}
-
-				//block this thread until we receive the value
-				//length_r, err2 := connection.Read(buffer[0:])
-				//handleError(err2)
-
-				instance := value_and_metadata{"", arg1, arg2, ver}
-				ref_instance := &(instance)
-
-				key_values[string(command_split[1])] = ref_instance
-
-				//make the wait_flag TRUE so that we can get the VALUE
-				buffer_key = command_split[1]
-				wait_flag = true
-				continue
 			}
 
-			if wait_flag == true {
-
-				val := value
-				key_values[buffer_key].value = val
-
-				//now reply back to the client
-				if buffer_noreply != "noreply" {
-
-					length_w, err3 := connection.Write([]byte("OK " + strconv.FormatInt(key_values[buffer_key].version, 10) + "\r\n")) //buffer[0:length_r])
-					if err3 == nil {
-						fmt.Println("Replied to client", length_w)
-					} else {
-						handleError(err3)
-					}
-				}
-
-				if key_values[buffer_key].exptime != 0 {
-
-					//start the timer taking the KEY as an argument
-					go exp_timer(buffer_key, key_values)
-				}
-
-				buffer_key = ""
-				buffer_noreply = ""
-				wait_flag = false
+			if key_values[string(command_split[1])].exptime != 0 {
+				//start the timer taking the KEY as an argument
+				go exp_timer(string(command_split[1]), key_values)
 			}
-			//continue
 
 		case "get":
 			arg1 := strings.Trim(command_split[1], "\r\n")
@@ -187,11 +131,15 @@ func handleConnection(connection net.Conn, key_values map[string]*value_and_meta
 
 			if presence {
 				instance := key_values[arg1]
-				_, err1 := connection.Write([]byte("VALUE "+instance.numbytes+"\r\n"+instance.value+"\r\n"))
-				handleError(err1)
+				//_, err = connection.Write([]byte("VALUE 10 val#one"))
+				_, err = connection.Write([]byte("VALUE " + instance.numbytes + "\r\n" + instance.value + "\r\n"))
+				if false {
+					fmt.Println("VALUE " + instance.numbytes + "\r\n" + instance.value + "\r\n")
+				}
+				handleError(err)
 			} else {
-				_, err1 := connection.Write([]byte("ERRNOTFOUND\r\n"))
-				handleError(err1)
+				_, err := connection.Write([]byte("ERRNOTFOUND\r\n"))
+				handleError(err)
 			}
 
 		case "getm":
@@ -200,99 +148,63 @@ func handleConnection(connection net.Conn, key_values map[string]*value_and_meta
 
 			if presence {
 				instance := key_values[arg1]
-				_, err1 := connection.Write([]byte("VALUE "+strconv.FormatInt(instance.version, 10)+" "+strconv.FormatInt(instance.exptime, 10)))
-				handleError(err1)
-				//_, err2 := connection.Write([]byte(strconv.FormatInt(instance.version, 10)))
-				//handleError(err2)
-				//_, err3 := connection.Write([]byte(" "))
-				//handleError(err3)
-				//_, err4 := connection.Write([]byte(strconv.FormatInt(instance.exptime, 10)))
-				//handleError(err4)
-				_, err5 := connection.Write([]byte(" "))
-				handleError(err5)
-				_, err6 := connection.Write([]byte(instance.numbytes))
-				handleError(err6)
-				_, err7 := connection.Write([]byte("\r\n"))
-				handleError(err7)
-				_, err8 := connection.Write([]byte(instance.value))
-				handleError(err8)
-				_, err9 := connection.Write([]byte("\r\n"))
-				handleError(err9)
+				_, err = connection.Write([]byte("VALUE " + strconv.FormatInt(instance.version, 10) + " " + strconv.FormatInt(instance.exptime, 10) + " " + instance.numbytes + "\r\n" + instance.value + "\r\n"))
+
 			} else {
 
-				_, err1 := connection.Write([]byte("ERRNOTFOUND\r\n"))
-				handleError(err1)
+				_, err := connection.Write([]byte("ERRNOTFOUND\r\n"))
+				handleError(err)
 			}
 
 		case "cas":
-			fmt.Println("Command is: CAS")
-
-			var arg1 int64	//version to be provided
-			var arg2 int64 
+			var arg1 int64 //version to be provided
+			var arg2 int64
 			var arg3 string
-
+			var val string
+			var cas_noreply string
 			var err error
 
-			if cas_wait_flag == false {
+			arg1, err = strconv.ParseInt(command_split[2], 10, 64)
+			handleError(err)
 
-				arg1, err = strconv.ParseInt(command_split[2], 10, 64)
-				handleError(err)
+			arg2, err = strconv.ParseInt(command_split[3], 10, 64)
+			handleError(err)
 
-				arg2, err = strconv.ParseInt(command_split[3], 10, 64)
-				handleError(err)
+			if strings.Contains(command_split[4], "\r\n") {
+				arg := strings.Trim(command_split[4], "\r\n")
+				arg3 = (strings.Split(arg, "\r\n"))[0]
+				val = (strings.Split(arg, "\r\n"))[1]
 
-				if strings.Contains(command_split[4], "\r\n") {
+			} else {
 
-					arg3 = strings.Trim(command_split[4], "\r\n")
-					handleError(err)
-				} else {
-
-					arg3 = strings.Trim(command_split[4], " ")
-					handleError(err)
-
-					cas_buffer_noreply = strings.Trim(command_split[5], "\r\n")
-					handleError(err)
-				}
-
-				if arg1 == key_values[string(command_split[1])].version {
-
-					// Update the old values
-					key_values[string(command_split[1])].exptime = arg2
-					key_values[string(command_split[1])].numbytes = arg3
-					key_values[string(command_split[1])].version = arg1
-
-					//make the wait_flag TRUE so that we can get the VALUE
-					cas_buffer_key = command_split[1]
-					cas_wait_flag = true
-					continue
-				}
+				arg3 = strings.Trim(command_split[4], " ")
+				cas_noreply = strings.Trim(command_split[5], "\r\n")
 
 			}
 
-			if cas_wait_flag == true {
+			/* Descarding the delay condition for now*/
+			//val_length, err := connection.Read(buffer1[0:])
+			//handleError(err)
 
-				val := value
-				key_values[cas_buffer_key].value = val
+			//val = strings.Trim(string(buffer1[0:val_length]), "\r\n")
 
-				//now reply back to the client
-				if cas_buffer_noreply != "noreply" {
-					length_w, err3 := connection.Write([]byte("OK " + strconv.FormatInt(key_values[cas_buffer_key].version, 10) + "\r\n")) //buffer[0:length_r])
-					if err3 == nil {
-						fmt.Println("Replied to client", length_w)
-					} else {
-						handleError(err3)
-					}
+			if arg1 == key_values[string(command_split[1])].version {
+
+				// Update the old values
+				key_values[string(command_split[1])].exptime = arg2
+				key_values[string(command_split[1])].numbytes = arg3
+				key_values[string(command_split[1])].version = arg1
+				key_values[string(command_split[1])].value = val
+
+				if cas_noreply != "noreply" {
+					_, err = connection.Write([]byte("OK " + strconv.FormatInt(key_values[string(command_split[1])].version, 10) + "\r\n")) //buffer[0:length_r])
+					handleError(err)
 				}
 
-				if key_values[cas_buffer_key].exptime != 0 {
-
+				if key_values[string(command_split[1])].exptime != 0 {
 					//start the timer taking the KEY as an argument
-					go exp_timer(cas_buffer_key, key_values)
+					go exp_timer(string(command_split[1]), key_values)
 				}
-
-				cas_buffer_key = ""
-				cas_buffer_noreply = ""
-				cas_wait_flag = false
 			}
 
 		case "delete":
@@ -304,35 +216,34 @@ func handleConnection(connection net.Conn, key_values map[string]*value_and_meta
 			// lets use the Comma-OK function (value, present = m[key]) to delete the key-value pair
 			_, presence := key_values[arg1]
 			if presence {
-
 				//map[arg1] = 1, false
 				delete(key_values, arg1)
-				_, err1 := connection.Write([]byte("DELETED\r\n"))
-				handleError(err1)
+				_, err = connection.Write([]byte("DELETED\r\n"))
+				handleError(err)
 			} else {
 
-				_, err1 := connection.Write([]byte("ERRNOTFOUND\r\n"))
-				handleError(err1)
+				_, err = connection.Write([]byte("ERRNOTFOUND\r\n"))
+				handleError(err)
 			}
 
 		default:
 			fmt.Println("ERRCMDERR\r\n")
-			_, err1 := connection.Write([]byte("ERRCMDERR \r\n"))
-			handleError(err1)
+			_, err = connection.Write([]byte("ERRCMDERR \r\n"))
+			handleError(err)
 		}
 
-		if err2 != nil {
-			handleError(err2)
+		if err != nil {
+			handleError(err)
 			return
 		}
 
 	}
 	//connection.Close()
+	//return
 }
 
 func handleError(err error) {
 	if err != nil {
-
 		fmt.Println("Error occured:", err.Error())
 	}
 }

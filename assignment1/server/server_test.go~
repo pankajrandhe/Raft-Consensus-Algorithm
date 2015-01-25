@@ -71,7 +71,7 @@ func TestSet(t *testing.T) {
 		t.Error(match_err)
 	}
 
-	//testcase#5 DELETE command
+	//testcase#3 DELETE command
 	sendToServer(connection, "delete two\r\n")
 	data = <-ch
 	matched, match_err = regexp.MatchString("DELETED\r\n", string(data))
