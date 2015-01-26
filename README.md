@@ -4,7 +4,8 @@ Execution Instructions <br>
 go get github.com/pankajrandhe/cs733/assignment1/server <br>
 go test github.com/pankajrandhe/cs733/assignment1/server <br>  
 
-Commands:<br>
+Commands:
+
 1. SET command <br>
 Client sends command:<br>
 set <key> <exptime> <numbytes> [noreply]\r\n<br>
@@ -17,7 +18,7 @@ Client sends command:<br>
 get <key>\r\n<br>
 Server responds with:<br>
 VALUE <numbytes>\r\n<br>
-<value bytes>\r\n<br>
+<value bytes>\r\n
 
 3. GETM command<br>
 Client sends command:<br>
@@ -41,4 +42,4 @@ DELETED\r\n<br>
 
 TO DO Tasks<br>
 1. Test cases for the concurrent multiple clients for DELETE, CAS commands using the automated testing framework.
-3. Yet the Error Handling is not robust enough, will sort out soon.
+2. Yet the Error Handling is not robust enough, will sort out soon.
