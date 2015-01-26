@@ -45,5 +45,5 @@ DELETED\r\n
 ```
 
 TO DO Tasks<br>
-*Test cases for the concurrent multiple clients for DELETE, CAS commands using the automated testing framework.
-*Yet the Error Handling is not robust enough, will sort out soon.
+1. Test cases for the concurrent multiple clients for DELETE, CAS commands using the automated testing framework.<br>
+2. Yet the Error Handling is not robust enough, will sort out soon.<br>
