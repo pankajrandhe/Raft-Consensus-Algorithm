@@ -11,6 +11,8 @@ import (
 )
 
 func ClientTest(t *testing.T) {
+	
+	go main()
 
 	time.Sleep(time.Duration(1) * time.Second)
 
