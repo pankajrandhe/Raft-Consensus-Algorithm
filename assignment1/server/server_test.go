@@ -10,7 +10,7 @@ import (
 	"errors"
 )
 
-func ClientTest(t *testing.T) {
+func TestClient(t *testing.T) {
 	
 	go main()
 
