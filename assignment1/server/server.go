@@ -8,18 +8,18 @@ import (
 	"strings"
 	"time"
 	"sync"
+	"log"
 )
 
 // Lets first create the structure which will hold the value and all other meta-data for the key
 type value_and_metadata struct {
-	value    string //[]byte
+	value    string 
 	exptime  int64
 	numbytes string
 	version  int64
 }
 
 // Create the MAP to hold the keys, values and the associated meta-data
-//var key_values map[string]*value_and_metadata
 
 var kvmap = struct{
     sync.RWMutex
@@ -27,9 +27,6 @@ var kvmap = struct{
 }{key_values: make(map[string]*value_and_metadata)}
 
 func main() {
-
-	//var key_values map[string] *value_and_metadata
-	//key_values = make(map[string]*value_and_metadata)
 
 	//create the TCP address to listen on
 	tcpAddress, err := net.ResolveTCPAddr("tcp", ":9000")
@@ -42,11 +39,8 @@ func main() {
 	//keep listening for the client request
 	for {
 
-		fmt.Println("Server listening...")
-
 		//if the request arrives accept the request from the client and create the connection object
 		connection, err1 := listener.Accept()
-		fmt.Println("req accepted")
 
 		if err1 != nil {
 			handleError(err1)
@@ -78,7 +72,6 @@ func handleConnection(connection net.Conn, key_values map[string]*value_and_meta
 		command_split = strings.Split(client_command, " ")
 
 		case_parameter = command_split[0]
-		fmt.Println("Client says:", client_command)
 
 		// Using the SWITCH-CASE statements to perform the operation based on the command
 
@@ -103,19 +96,16 @@ func handleConnection(connection net.Conn, key_values map[string]*value_and_meta
 
 			} else {
 
-				arg2 = strings.Trim(command_split[3], " ")
-				set_noreply = strings.Trim(command_split[4], "\r\n")
+				arg2 = command_split[3]//(strings.Split(arg, "\r\n"))[0]
+				arg := strings.Trim(command_split[4], "\r\n")
+				val = (strings.Split(arg,"\r\n" ))[1]
+				set_noreply = (strings.Split(arg,"\r\n" ))[0]
+				//set_noreply = (strings.Split(arg,"\r\n" ))[0]
+				fmt.Println(arg2,val,set_noreply)
 			}
 
-			/*keeping aside the delay condition for now */
-			// Read the second line from the client
 
-			//val_length, err = connection.Read(buffer1[0:])
-			//handleError(err)
-
-			//val = strings.Trim(string(buffer1[0:val_length]), "\r\n")
-
-			instance := value_and_metadata{val, arg1, arg2, ver} //val
+			instance := value_and_metadata{val, arg1, arg2, ver}
 			ref_instance := &(instance)
 
 			kvmap.Lock()
@@ -205,12 +195,6 @@ func handleConnection(connection net.Conn, key_values map[string]*value_and_meta
 
 			}
 
-			/* Descarding the delay condition for now*/
-			//val_length, err := connection.Read(buffer1[0:])
-			//handleError(err)
-
-			//val = strings.Trim(string(buffer1[0:val_length]), "\r\n")
-
 			kvmap.RLock()
 			if arg1 == kvmap.key_values[string(command_split[1])].version {
 
@@ -239,12 +223,14 @@ func handleConnection(connection net.Conn, key_values map[string]*value_and_meta
 					kvmap.RUnlock()
 				}
 			} else{
+
+				_, err = connection.Write([]byte("ERR_VERSION\r\n"))
+				handleError(err)
 				kvmap.RUnlock()
 			}
 
 		case "delete":
 			arg1 := strings.Trim(command_split[1], "\r\n")
-			fmt.Println(arg1)
 
 			// lets use the Comma-OK function (value, present = m[key]) to delete the key-value pair
 			kvmap.RLock()
@@ -266,7 +252,6 @@ func handleConnection(connection net.Conn, key_values map[string]*value_and_meta
 			}
 
 		default:
-			fmt.Println("ERRCMDERR\r\n")
 			_, err = connection.Write([]byte("ERRCMDERR \r\n"))
 			handleError(err)
 		}
@@ -277,13 +262,12 @@ func handleConnection(connection net.Conn, key_values map[string]*value_and_meta
 		}
 
 	}
-	//connection.Close()
-	//return
 }
 
 func handleError(err error) {
 	if err != nil {
 		fmt.Println("Error occured:", err.Error())
+		log.Fatal(err)
 	}
 }
 
@@ -295,12 +279,9 @@ func exp_timer(key string, key_values map[string]*value_and_metadata) {
 
 	go func() {
 
-		for t := range ticker.C {
+		for range ticker.C {
 
 			record.exptime = record.exptime - 1
-			if false {
-				fmt.Println("Tick at", t)
-			}
 		}
 	}()
 	time.Sleep(time.Duration(time_limit) * time.Second)
