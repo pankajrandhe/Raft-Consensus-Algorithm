@@ -13,7 +13,7 @@ func TestClient(t *testing.T) {
 
 	go main() 
 
-	time.Sleep(time.Duration(1) * time.Second)
+	time.Sleep(time.Duration(100) * time.Millisecond)
 
 	var eChr chan error = make(chan error)
 
@@ -131,6 +131,24 @@ func setSingleClient() (match_err error){
 		return match_err
 	}
 
+	//testcase#8 SET command
+	sendToServer(connection, "set five 2 10\r\nval#five")
+	data = <-ch
+	matched,_ = regexp.MatchString("OK.*", string(data))
+	if !matched {
+		return match_err
+	}
+
+	//testcase#9 GET command (value shoul get cleared after 2 secs)
+	//sleep for 2 secs
+	time.Sleep(time.Duration(2)*time.Second)
+	sendToServer(connection, "get five\r\n")
+	data = <-ch
+	matched,_ = regexp.MatchString("ERRNOTFOUND\r\n", string(data))
+	if !matched {
+		return match_err
+	}
+
 	return nil
 }
 
@@ -224,7 +242,7 @@ func setConcurrentClient(eChr chan error){
 	//testcase#8 GETM command
 	sendToServer(connection, "getm three\r\n")
 	data = <-ch
-	matched,_ = regexp.MatchString("ERRNOTFOUND", string(data))
+	matched,_ = regexp.MatchString("ERRNOTFOUND\r\n", string(data))
 	if !matched {
 		eChr <- match_err
 	}
