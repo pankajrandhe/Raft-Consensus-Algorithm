@@ -1,32 +1,32 @@
 package main
 
 import (
-	"fmt"
 	"net"
 	"regexp"
 	"testing"
 	"time"
 	"errors"
+	"fmt"
+	"log"
+	"strconv"
 )
 
 func TestClient(t *testing.T) {
 
 	go main() 
 
-	time.Sleep(time.Duration(100) * time.Millisecond)
+	time.Sleep(time.Duration(1) * time.Second)
 
 	var eChr chan error = make(chan error)
 
 	//Test for the single client
-	err_stat_single := setSingleClient()
-	if err_stat_single != nil{
-		t.Error("Error: output not matched")
-	}
+	setSingleClient(t)
 
 	//Test 10 concurrent clients
-	for i:=0; i<10; i++{
+	var i int64
+	for i=0; i<3; i++{
 
-		go setConcurrentClient(eChr)
+		go setConcurrentClient(eChr,i)
 	}
 
 	errstat_stat_concurrent := <-eChr
@@ -39,7 +39,7 @@ func TestClient(t *testing.T) {
     fmt.Scanln(&input)
 }
 
-func setSingleClient() (match_err error){
+func setSingleClient(t *testing.T){ //(match_err error){
 
 	connection, err1 := net.Dial("tcp", ":9000")
 	handleErr(err1)
@@ -49,7 +49,7 @@ func setSingleClient() (match_err error){
 	var data []byte
 	var matched bool
 
-	match_err = errors.New("not matched")
+	match_err := errors.New("not matched")
 
 	// Start a goroutine to read from our net connection
 	go func(ch chan []byte, eCh chan error) {
@@ -57,6 +57,7 @@ func setSingleClient() (match_err error){
 			// try to read the data
 			data := make([]byte, 512)
 			_, err := connection.Read(data)
+
 			if err != nil {
 				// send an error if it's encountered
 				eCh <- err
@@ -72,23 +73,25 @@ func setSingleClient() (match_err error){
 	data = <-ch
 	matched,_ = regexp.MatchString("OK.*", string(data))
 	if !matched {
-		return match_err
+		t.Error(match_err)
 	}
 
 	//testcase#2 SET command
-	sendToServer(connection, "set two 0 10\r\nval#two\r\n")
+	sendToServer(connection, "set two 0 10\r\n")
+	sendToServer(connection, "val#two\r\n")
 	data = <-ch
 	matched,_ = regexp.MatchString("OK.*", string(data))
 	if !matched {
-		return match_err
+		t.Error(match_err)
 	}
-
+	
 	//testcase#3 SET command
-	sendToServer(connection, "set three 0 10\r\nval#three\r\n")
+	sendToServer(connection, "set three ")
+	sendToServer(connection, "0 10\r\nval#three\r\n")
 	data = <-ch
 	matched,_ = regexp.MatchString("OK.*", string(data))
 	if !matched {
-		return match_err
+		t.Error(match_err)
 	}
 
 	//testcase#4 GET command
@@ -96,7 +99,7 @@ func setSingleClient() (match_err error){
 	data = <-ch
 	matched,_ = regexp.MatchString("VALUE 10\r\nval#one\r\n", string(data))
 	if !matched {
-		return match_err
+		t.Error(match_err)
 	}
 
 	//testcase#5 GETM command
@@ -104,7 +107,7 @@ func setSingleClient() (match_err error){
 	data = <-ch
 	matched,_ = regexp.MatchString("VALUE ([0-9]*) 0 10\r\nval#one\r\n", string(data))
 	if !matched {
-		return match_err
+		t.Error(match_err)
 	}
 
 	//testcase#6 DELETE command
@@ -112,7 +115,7 @@ func setSingleClient() (match_err error){
 	data = <-ch
 	matched,_ = regexp.MatchString("DELETED\r\n", string(data))
 	if !matched {
-		return match_err
+		t.Error(match_err)
 	}
 
 	//testcase#7 DELETE command
@@ -120,39 +123,37 @@ func setSingleClient() (match_err error){
 	data = <-ch
 	matched,_ = regexp.MatchString("DELETED\r\n", string(data))
 	if !matched {
-		return match_err
+		t.Error(match_err)
 	}
 
 	//testcase#7 CAS command
-	sendToServer(connection, "cas three 0 123453 10\r\nval#threethree")
+	sendToServer(connection, "cas three 0 123453 10\r\nval#three\r\n")
 	data = <-ch
 	matched,_ = regexp.MatchString("ERR_VERSION\r\n", string(data))
 	if !matched {
-		return match_err
+		t.Error(match_err)
 	}
 
 	//testcase#8 SET command
-	sendToServer(connection, "set five 2 10\r\nval#five")
+	sendToServer(connection, "set five 2 10\r\nval#five\r\n")
 	data = <-ch
 	matched,_ = regexp.MatchString("OK.*", string(data))
 	if !matched {
-		return match_err
+		t.Error(match_err)
 	}
 
-	//testcase#9 GET command (value shoul get cleared after 2 secs)
+	//testcase#9 GET command (value should get cleared after 2 secs)
 	//sleep for 2 secs
 	time.Sleep(time.Duration(2)*time.Second)
 	sendToServer(connection, "get five\r\n")
 	data = <-ch
 	matched,_ = regexp.MatchString("ERRNOTFOUND\r\n", string(data))
 	if !matched {
-		return match_err
+		t.Error(match_err)
 	}
-
-	return nil
 }
 
-func setConcurrentClient(eChr chan error){
+func setConcurrentClient(eChr chan error, i int64){
 
 	connection, err1 := net.Dial("tcp", ":9000")
 	handleErr(err1)
@@ -160,8 +161,7 @@ func setConcurrentClient(eChr chan error){
 	ch := make(chan []byte)
 	eCh := make(chan error)
 	var data []byte
-	var matched bool
-	var matched1 bool
+	var matched, matched1, matched2, matched3 bool
 
 	match_err := errors.New("Output not matched")
 
@@ -172,7 +172,7 @@ func setConcurrentClient(eChr chan error){
 			data := make([]byte, 512)
 			_, err := connection.Read(data)
 			if err != nil {
-				// send an error if it's encountered
+				// send an error if it's encounteredst
 				eCh <- err
 				return
 			}
@@ -183,14 +183,6 @@ func setConcurrentClient(eChr chan error){
 
 	//testcase#1 SET command
 	sendToServer(connection, "set one 0 10\r\nval#one\r\n")
-	data = <-ch
-	matched,_ = regexp.MatchString("OK.*", string(data))
-	if !matched {
-		eChr <- match_err
-	}
-
-	//testcase#2 SET command
-	sendToServer(connection, "set two 0 10\r\nval#two\r\n")
 	data = <-ch
 	matched,_ = regexp.MatchString("OK.*", string(data))
 	if !matched {
@@ -213,20 +205,23 @@ func setConcurrentClient(eChr chan error){
 		eChr <- match_err
 	}
 
-	//testcase#5 SET command
-	sendToServer(connection, "set three 0 10\r\nval#three\r\n")
+	//testcase#5 SET command with delay
+	sendToServer(connection, "set three 0 10\r\n")
+	sendToServer(connection,"val#"+strconv.FormatInt(i,10)+"\r\n")
 	data = <-ch
 	matched,_ = regexp.MatchString("OK.*",string(data))
 	if !matched {
 		eChr <- match_err
 	}
 
-	//testcase#6 GETM command
+	//testcase#6 GETM command -> value should be one of the value set by clients
 	sendToServer(connection, "getm three\r\n")
 	data = <-ch
-	matched,_ = regexp.MatchString("VALUE ([0-9]*) 0 10\r\nval#three\r\n", string(data))
-	matched1,_ = regexp.MatchString("ERRNOTFOUND\r\n", string(data))
-	if !(matched || matched1) {
+	matched,_ = regexp.MatchString("VALUE ([0-9]*) 0 10\r\nval#0\r\n", string(data))
+	matched1,_ = regexp.MatchString("VALUE ([0-9]*) 0 10\r\nval#1\r\n", string(data))
+	matched2,_ = regexp.MatchString("VALUE ([0-9]*) 0 10\r\nval#2\r\n", string(data))
+	matched3,_ = regexp.MatchString("ERRNOTFOUND\r\n", string(data))
+	if !(matched || matched1 || matched2 || matched3) {
 		eChr <- match_err
 	}
 
@@ -253,7 +248,7 @@ func setConcurrentClient(eChr chan error){
 
 func handleErr(err error) {
 	if err != nil {
-		fmt.Println("Error occured:", err.Error())
+		log.Fatal(err)
 	}
 }
 

@@ -1,8 +1,6 @@
 package main
 
 import (
-	"fmt"
-	"math/rand"
 	"net"
 	"strconv"
 	"strings"
@@ -20,7 +18,6 @@ type value_and_metadata struct {
 }
 
 // Create the MAP to hold the keys, values and the associated meta-data
-
 var kvmap = struct{
     sync.RWMutex
     key_values map[string]*value_and_metadata
@@ -55,23 +52,80 @@ func main() {
 
 func handleConnection(connection net.Conn, key_values map[string]*value_and_metadata) {
 
-	var buffer [1024]byte
+	buffer := make([]byte, 512)
+	buffer_temp := make([]byte, 512)
 	var err error
+	var ver int64 = 1
 
 	for {
 
 		var client_command string
-		var case_parameter string
 		var command_split []string
-		var length_r int
+		var case_parameter string
+		var length_r, length_temp int
+		var newline_count int = 0
 
+		// Read the first packet to decide the course of the action
 		length_r, err = connection.Read(buffer[0:])
 		handleError(err)
 
-		client_command = string(buffer[0:length_r])
-		command_split = strings.Split(client_command, " ")
+		newline_count = strings.Count(string(buffer[0:length_r]),"\r\n")
+	
+		case_parameter = strings.Split(string(buffer[0:length_r]), " ")[0]
 
-		case_parameter = command_split[0]
+		// check whether if we have got \r\n and command is not set or cas command
+		if strings.Contains(string(buffer[0:length_r]),"\r\n") && !(case_parameter == "set" || case_parameter == "cas"){
+
+			client_command = string(buffer[0:length_r])
+
+		} else if !(strings.Contains(string(buffer[0:length_r]),"\r\n")) && !(case_parameter == "set" || case_parameter == "cas"){
+		
+			// In this case read the packets until we get the "\r\n"
+			for {
+					length_temp, err = connection.Read(buffer_temp[0:])
+					handleError(err)
+
+					buffer = append(buffer[0:length_r],buffer_temp[0:length_temp]...)
+					length_r = length_r + length_temp
+
+					if strings.Contains(string(buffer),"\r\n"){
+						break
+					} else {
+						continue
+					}
+			}
+			client_command = string(buffer[0:length_r])
+		} else {
+				
+			if newline_count == 2{
+				client_command = string(buffer[0:length_r])
+
+			} else {
+
+				// Otherwise go on reading until we get two "\r\n" characters
+				for {
+
+					if newline_count <2 {
+						buffer_temp := make([]byte,1024)
+						length_temp, err = connection.Read(buffer_temp[0:])
+						handleError(err)
+
+						buffer = append(buffer[0:length_r],buffer_temp[0:length_temp]...)
+						length_r = length_r + length_temp
+
+						if strings.Contains(string(buffer),"\r\n") {
+							newline_count ++ 
+						}
+					} else {
+							break
+						}
+				}
+				client_command = string(buffer[0:length_r])
+			}			
+		}
+
+		//client_command = string(buffer)
+		command_split = strings.Split(client_command," ")
 
 		// Using the SWITCH-CASE statements to perform the operation based on the command
 
@@ -83,8 +137,8 @@ func handleConnection(connection net.Conn, key_values map[string]*value_and_meta
 			var val string
 			var set_noreply string
 
-			//Generate the random number as the version
-			var ver int64 = rand.Int63()
+			//Generate the version
+			ver = ver + 1
 
 			arg1, err = strconv.ParseInt(command_split[2], 10, 64)
 			handleError(err)
@@ -98,12 +152,9 @@ func handleConnection(connection net.Conn, key_values map[string]*value_and_meta
 
 				arg2 = command_split[3]//(strings.Split(arg, "\r\n"))[0]
 				arg := strings.Trim(command_split[4], "\r\n")
-				val = (strings.Split(arg,"\r\n" ))[1]
 				set_noreply = (strings.Split(arg,"\r\n" ))[0]
-				//set_noreply = (strings.Split(arg,"\r\n" ))[0]
-				fmt.Println(arg2,val,set_noreply)
+				val = (strings.Split(arg,"\r\n" ))[1]
 			}
-
 
 			instance := value_and_metadata{val, arg1, arg2, ver}
 			ref_instance := &(instance)
@@ -129,6 +180,7 @@ func handleConnection(connection net.Conn, key_values map[string]*value_and_meta
 		case "get":
 
 			arg1 := strings.Trim(command_split[1], "\r\n")
+
 			kvmap.RLock()
 			_, presence := kvmap.key_values[arg1]
 
@@ -140,9 +192,6 @@ func handleConnection(connection net.Conn, key_values map[string]*value_and_meta
 				kvmap.RUnlock()
 
 				_, err = connection.Write([]byte("VALUE " + instance.numbytes + "\r\n" + instance.value + "\r\n"))
-				if false {
-					fmt.Println("VALUE " + instance.numbytes + "\r\n" + instance.value + "\r\n")
-				}
 				handleError(err)
 			} else {
 				kvmap.RUnlock()
@@ -266,7 +315,6 @@ func handleConnection(connection net.Conn, key_values map[string]*value_and_meta
 
 func handleError(err error) {
 	if err != nil {
-		fmt.Println("Error occured:", err.Error())
 		log.Fatal(err)
 	}
 }
@@ -289,3 +337,5 @@ func exp_timer(key string, key_values map[string]*value_and_metadata) {
 	// as soon as the timer expires delete the record
 	delete(key_values, key)
 }
+
+	
