@@ -62,22 +62,35 @@ func (raft Raft) Append(data []byte) (LogEntry, error){
 	// first we have to check if the server is the leader
 	if raft.ServerId != leaderID{
 		return ErrRedirect
-	}else{
-
+	} else {
+ 
+		/*
+		* Write the received log entry - data byte to a file in the local disk 
+		*
+		* References:
+		* Writing to Files - https://gobyexample.com/writing-files
+		* Appending to Files - http://stackoverflow.com/questions/7151261/append-to-a-file-in-go?lq=1
+		* Check whether file already exists - http://stackoverflow.com/questions/12518876/how-to-check-if-a-file-exists-in-go
+		*/
 		filename := ClusterConfig.path
-		// first open the file to write into
-		//Ref: http://stackoverflow.com/questions/7151261/append-to-a-file-in-go?lq=1
-		logFile, err := os.OpenFile(filename, os.O_APPEND|os.O_WRONLY, 0600)
+
+		if _, err := os.Stat(filename); os.IsNotExist(err) {
+			_, err := os.Create(filename)
+			if err != nil {
+				panic(err)
+			}
+		}
+
+		logFile, err := os.OpenFile(filename, os.O_APPEND|os.O_WRONLY, 0666)
 		if err != nil {
 		    panic(err)
 		}
 
 		defer logFile.Close()
 
-		if _, err = logFile.WriteFile(filename); err != nil {
+		if _, err = logFile.WriteString("\n"+string(data)); err != nil {
 		    panic(err)
 		}
+
 	}
 }
-
-//Test Change
