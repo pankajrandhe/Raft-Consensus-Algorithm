@@ -79,3 +79,5 @@ func (raft Raft) Append(data []byte) (LogEntry, error){
 		}
 	}
 }
+
+//Test Change
