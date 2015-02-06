@@ -7,6 +7,8 @@ import(
 	"net"
 )
 
+var raft Raft
+
 type bytearray []byte
 
 type Lsn uint64  //Log sequence number, unique for all time.
@@ -61,9 +63,9 @@ type ClusterConfig struct {
 // Raft implements the SharedLog interface.
 type Raft struct {
 
-	cluster *ClusterConfig
-	thisServerId int
-	commitCh chan LogEntry
+	Cluster *ClusterConfig
+	ThisServerId int
+	CommitCh chan LogEntry
 }
 
 // Creates a raft object. This implements the SharedLog interface.
@@ -72,10 +74,8 @@ type Raft struct {
 // entries are recovered and replayed
 func NewRaft(config *ClusterConfig, thisServerId int, commitCh chan LogEntry) (*Raft, error) {
 
-	raft := Raft{config,thisServerId,commitCh}
-
+	raft = Raft{config,thisServerId,commitCh}
 	var err error = nil
-
 	return &raft, err
 }
 
@@ -87,12 +87,12 @@ func (e ErrRedirect) Error() string {
 func (raft Raft) Append(data []byte) (LogEntry, error){
 
 	// first we have to check if the server is the leader
-	var serverid int = 1 //dummy
-	var leaderid int = 1 //dummy
+	var leaderId int = 0 //dummy
 
-	err := errors.New(string(leaderid))
+	err := errors.New("Leader is Server"+string(leaderId))
 	
-	if serverid != leaderid{
+	if raft.ThisServerId != leaderId{
+		//Server is not the leader
 		return nil,err
 	} else {
  
@@ -105,7 +105,7 @@ func (raft Raft) Append(data []byte) (LogEntry, error){
 		* Check whether file already exists - http://stackoverflow.com/questions/12518876/how-to-check-if-a-file-exists-in-go
 		*/
 
-		filename := (raft.cluster).Path
+		filename := (raft.Cluster).Path
 
 		if _, err := os.Stat(filename); os.IsNotExist(err) {
 			_, err := os.Create(filename)
@@ -125,11 +125,11 @@ func (raft Raft) Append(data []byte) (LogEntry, error){
 		    panic(err)
 		}
 
-		// Take the raft object and broadcat the logentry
+		// Take the raft object and broadcast the log-entry
 		// Lets send the logentry to each of the servers in the cluster
 
 		//Read back the servers as JSON objects
-		servers := raft.cluster.Servers
+		servers := raft.Cluster.Servers
 
 		for _, server := range servers{
 
@@ -144,6 +144,10 @@ func (raft Raft) Append(data []byte) (LogEntry, error){
 			panic(err3)
 
 		}
+		
+		/*
+		* Code for receving response from other servers if majority, write to KV Store and respond to Client.
+		*/
 
 		// Prepare the log entry and return it else error
 		return bytearray(data),nil

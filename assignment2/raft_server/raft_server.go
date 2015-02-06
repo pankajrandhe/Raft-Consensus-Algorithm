@@ -26,15 +26,31 @@ var kvmap = struct {
 	sync.RWMutex
 	key_values map[string]*value_and_metadata
 }{key_values: make(map[string]*value_and_metadata)}
+func test(){
+	fmt.Println("")
+}
+
+//Using WaitGroup, so that the goroutine get time for execution
+var wg sync.WaitGroup
 
 func main() {
 
-	//First of all let the server know what is the Raft configuration by calling the NewRaft()
+//Simulate and start the cluster of servers.
+	for i := 0; i < 3; i++ {
+	// Increment the WaitGroup counter.
+	wg.Add(1)
+    go spawnServer(i)
+}
+// Wait forever.
+ wg.Wait()
 
-	//read the json file and get the server configurations 
+}
+ 
+func spawnServer(serverId int){
 
+	//Read the json file and get the server configurations 
 	var cluster_config raft.ClusterConfig
-	server_configs, err := ioutil.ReadFile("/home/pankaj/go/src/github.com/pankajrandhe/cs733/assignment2/servers_json.json")
+	server_configs, err := ioutil.ReadFile("/home/avp/GO/src/github.com/pankajrandhe/cs733/assignment2/servers_json.json")
 	if err != nil{
 		panic(err)
 	}
@@ -44,17 +60,18 @@ func main() {
 		panic(err_json)
 	} 
 
-	serverId := 0 //dummy
+	
 	commitCh := make(chan raft.LogEntry)
 
 	var raft_instance *(raft.Raft)
+	//Initialize Raft Object with the cluster configuration, server id and commit channel.
 	raft_instance, err = raft.NewRaft(&cluster_config, serverId, commitCh)
-
-	cluster_config = raft_instance.cluster	//dummy
-	//fmt.Println(raft.cluster)
+	//cluster_config = raft_instance.cluster	//dummy
+	fmt.Println("Server "+ strconv.Itoa(serverId) +" listening on ClientPort:"+strconv.Itoa(raft_instance.Cluster.Servers[serverId].ClientPort))
+	
 
 	//create the TCP address to listen on
-	tcpAddress, err := net.ResolveTCPAddr("tcp", ":9000")
+	tcpAddress, err := net.ResolveTCPAddr("tcp", ":"+strconv.Itoa(raft_instance.Cluster.Servers[serverId].ClientPort))
 	handleError(err)
 
 	//now create the listener to listen on the above tcp address
@@ -76,7 +93,10 @@ func main() {
 		go handleConnection(connection, kvmap.key_values)
 		defer connection.Close()
 	}
+	// Decrement the counter when the goroutine completes.
+	defer wg.Done()
 }
+
 
 func handleConnection(connection net.Conn, key_values map[string]*value_and_metadata) {
 
