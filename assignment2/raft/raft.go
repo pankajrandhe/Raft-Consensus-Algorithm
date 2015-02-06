@@ -144,9 +144,9 @@ func (raft Raft) Append(data []byte) (LogEntry, error){
 			panic(err3)
 
 		}
-		
+
 		/*
-		* Code for receving response from other servers if majority, write to KV Store and respond to Client.
+		* Code for receving response from other servers; if majority, write to KV Store and respond to Client.
 		*/
 
 		// Prepare the log entry and return it else error

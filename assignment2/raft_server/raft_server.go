@@ -63,9 +63,9 @@ func spawnServer(serverId int){
 	var raft_instance *(raft.Raft)
 	//Initialize Raft Object with the cluster configuration, server id and commit channel.
 	raft_instance, err = raft.NewRaft(&cluster_config, serverId, commitCh)
-	//cluster_config = raft_instance.cluster	//dummy
+
 	fmt.Println("Server "+ strconv.Itoa(serverId) +" listening on ClientPort:"+strconv.Itoa(raft_instance.Cluster.Servers[serverId].ClientPort))
-	
+
 
 	//create the TCP address to listen on
 	tcpAddress, err := net.ResolveTCPAddr("tcp", ":"+strconv.Itoa(raft_instance.Cluster.Servers[serverId].ClientPort))
@@ -85,6 +85,10 @@ func spawnServer(serverId int){
 			handleError(err1)
 			continue
 		}
+
+		/*
+		* Code to receive the command client has sent(TCP), pack it in a byte and call raft.Append(byte)
+		*/
 
 		// Now handle the connection
 		go handleConnection(connection, kvmap.key_values)
