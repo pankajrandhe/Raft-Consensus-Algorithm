@@ -26,9 +26,6 @@ var kvmap = struct {
 	sync.RWMutex
 	key_values map[string]*value_and_metadata
 }{key_values: make(map[string]*value_and_metadata)}
-func test(){
-	fmt.Println("")
-}
 
 //Using WaitGroup, so that the goroutine get time for execution
 var wg sync.WaitGroup
