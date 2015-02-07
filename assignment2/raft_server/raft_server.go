@@ -121,11 +121,45 @@ func spawnServer(serverId int){
 	defer wg.Done()
 }
 
+func checkMajority(){
+
+	//check majority against each log entry
+
+
+}
+
 func handleServerConnection(server_connection net.Conn){
 
-	// Check for the ACks from the majority of the followers 
-	//if majority replies commit the entry
+	//Case1: If the server is the Leader it will listen only for ACKs from the follower servers
+	//Case2: If the server is the follower it will listen for the Log Entries on the connection and reply back with ACK if commits
 
+	ch := make(chan []byte)
+	eCh := make(chan error)
+	var ack []byte
+
+	// Start a goroutine to read from our server-to-server connections
+	go func(ch chan []byte, eCh chan error) {
+		for {
+
+			response := make([]byte, 512)
+			_, err := connection.Read(response)
+
+			if err != nil {
+				// send an error if it's encountered
+				eCh <- err
+				return
+			}
+			// send data if we read some.
+			ch <- response
+		}
+	}(ch,eCh)
+
+	// Keep reading from the channel for the ACKs, and check for the majority
+	for {
+
+		ack <- ch
+		checkMajority(ack)		//ack will be equal to the Lsn, 
+	}
 }
 
 
@@ -139,7 +173,6 @@ func handleClientConnection(connection net.Conn, raft_instance *raft.Raft, key_v
 	for {
 
 		var client_command []byte
-		//var command_split []string
 		var case_parameter string
 		var length_r, length_temp int
 		var newline_count int = 0
@@ -203,7 +236,6 @@ func handleClientConnection(connection net.Conn, raft_instance *raft.Raft, key_v
 			}
 		}
 
-
 		// Once the client command is ready call the Append()
 		logentry, err := raft_instance.Append(client_command)
 		if err!= nil{
@@ -213,11 +245,7 @@ func handleClientConnection(connection net.Conn, raft_instance *raft.Raft, key_v
 			redirect to the server in this case by using the error returned
 			*/
 			connection.Close()	//for now, add redirect code here
-		}
-
-		fmt.Println(logentry)
-
-		
+		}		
 
 		switch case_parameter {
 

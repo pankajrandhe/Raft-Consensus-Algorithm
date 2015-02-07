@@ -67,6 +67,7 @@ type Raft struct {
 	ThisServerId int
 	LeaderId int
 	CommitCh chan LogEntry
+
 }
 
 // Creates a raft object. This implements the SharedLog interface.
@@ -92,9 +93,8 @@ func (raft Raft) Append(data []byte) (LogEntry, error){
 	err := errors.New("Leader is Server"+string(raft.LeaderId))
 	
 	if raft.ThisServerId != raft.LeaderId{
-
-		//e := ErrRedirect(raft.LeaderId)
-		//err_red := errors.New(e.Error())
+		
+		err:= errors.New(ErrRedirect(raft.LeaderId))
 		return nil, err
 	} else {
  
