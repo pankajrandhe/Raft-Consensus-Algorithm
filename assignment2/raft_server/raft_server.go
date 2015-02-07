@@ -47,7 +47,7 @@ func spawnServer(serverId int){
 
 	//Read the json file and get the server configurations 
 	var cluster_config raft.ClusterConfig
-	server_configs, err := ioutil.ReadFile("/home/avp/GO/src/github.com/pankajrandhe/cs733/assignment2/servers_json.json")
+	server_configs, err := ioutil.ReadFile("/home/pankaj/go/src/github.com/pankajrandhe/cs733/assignment2/servers_json.json")
 	if err != nil{
 		panic(err)
 	}
@@ -86,12 +86,8 @@ func spawnServer(serverId int){
 			continue
 		}
 
-		/*
-		* Code to receive the command client has sent(TCP), pack it in a byte and call raft.Append(byte)
-		*/
-
 		// Now handle the connection
-		go handleConnection(connection, kvmap.key_values)
+		go handleConnection(connection, raft_instance, kvmap.key_values)
 		defer connection.Close()
 	}
 	// Decrement the counter when the goroutine completes.
@@ -99,7 +95,7 @@ func spawnServer(serverId int){
 }
 
 
-func handleConnection(connection net.Conn, key_values map[string]*value_and_metadata) {
+func handleConnection(connection net.Conn, raft_instance *raft.Raft, key_values map[string]*value_and_metadata) {
 
 	buffer := make([]byte, 512)
 	buffer_temp := make([]byte, 512)
@@ -108,8 +104,8 @@ func handleConnection(connection net.Conn, key_values map[string]*value_and_meta
 
 	for {
 
-		var client_command string
-		var command_split []string
+		var client_command []byte
+		//var command_split []string
 		var case_parameter string
 		var length_r, length_temp int
 		var newline_count int = 0
@@ -125,7 +121,7 @@ func handleConnection(connection net.Conn, key_values map[string]*value_and_meta
 		// check whether if we have got \r\n and command is not set or cas command
 		if strings.Contains(string(buffer[0:length_r]), "\r\n") && !(case_parameter == "set" || case_parameter == "cas") {
 
-			client_command = string(buffer[0:length_r])
+			client_command = buffer[0:length_r]
 
 		} else if !(strings.Contains(string(buffer[0:length_r]), "\r\n")) && !(case_parameter == "set" || case_parameter == "cas") {
 
@@ -143,11 +139,11 @@ func handleConnection(connection net.Conn, key_values map[string]*value_and_meta
 					continue
 				}
 			}
-			client_command = string(buffer[0:length_r])
+			client_command = buffer[0:length_r]
 		} else {
 
 			if newline_count == 2 {
-				client_command = string(buffer[0:length_r])
+				client_command = buffer[0:length_r]
 
 			} else {
 
@@ -169,28 +165,41 @@ func handleConnection(connection net.Conn, key_values map[string]*value_and_meta
 						break
 					}
 				}
-				client_command = string(buffer[0:length_r])
+				client_command = buffer[0:length_r]
 			}
 		}
 
-		command_split = strings.Split(client_command, " ")
+
+		// Once the client command is ready call the Append()
+		logentry, err := raft_instance.Append(client_command)
+		if err!= nil{
+			panic(err)
+			/* 
+			Error wold be genearted in case if the server is not the leader, 
+			redirect to the server in this case by using the error returned
+			*/
+		}
+
+		fmt.Println(logentry)
+
+		
 
 		switch case_parameter {
 
 		case "set":
-			handleSet(command_split, connection, ver)
+			handleSet(string(client_command), connection, ver)
 
 		case "get":
-			handleGet(command_split, connection)
+			handleGet(string(client_command), connection)
 
 		case "getm":
-			handleGetm(command_split, connection)
+			handleGetm(string(client_command), connection)
 
 		case "cas":
-			handleCas(command_split, connection, ver)
+			handleCas(string(client_command), connection, ver)
 
 		case "delete":
-			handleDelete(command_split, connection)
+			handleDelete(string(client_command), connection)
 
 		default:
 			_, err = connection.Write([]byte("ERRCMDERR \r\n"))
@@ -205,13 +214,14 @@ func handleConnection(connection net.Conn, key_values map[string]*value_and_meta
 	}
 }
 
-func handleSet(command_split []string, connection net.Conn, ver int64) {
+func handleSet(client_command string, connection net.Conn, ver int64) {
 	var arg1 int64
 	var arg2 string
 	var val string
 	var set_noreply string
 	var err error
 
+	command_split := strings.Split(client_command, " ")
 	//Generate the version
 	ver = ver + 1
 	arg1, err = strconv.ParseInt(command_split[2], 10, 64)
@@ -256,9 +266,10 @@ func handleSet(command_split []string, connection net.Conn, ver int64) {
 	}
 }
 
-func handleGet(command_split []string, connection net.Conn) {
+func handleGet(client_command string, connection net.Conn) {
 
 	var err error
+	command_split := strings.Split(client_command, " ")
 	arg1 := strings.Trim(command_split[1], "\r\n")
 
 	kvmap.RLock()
@@ -279,9 +290,10 @@ func handleGet(command_split []string, connection net.Conn) {
 	}
 }
 
-func handleGetm(command_split []string, connection net.Conn) {
+func handleGetm(client_command string, connection net.Conn) {
 
 	var err error
+	command_split := strings.Split(client_command, " ")
 	arg1 := strings.Trim(command_split[1], "\r\n")
 	kvmap.RLock()
 	_, presence := kvmap.key_values[arg1]
@@ -300,7 +312,7 @@ func handleGetm(command_split []string, connection net.Conn) {
 	}
 }
 
-func handleCas(command_split []string, connection net.Conn, ver int64) {
+func handleCas(client_command string, connection net.Conn, ver int64) {
 
 	var arg1 int64 //version to be provided
 	var arg2 int64
@@ -308,6 +320,7 @@ func handleCas(command_split []string, connection net.Conn, ver int64) {
 	var val string
 	var cas_noreply string
 	var err error
+	command_split := strings.Split(client_command, " ")
 
 	arg1, err = strconv.ParseInt(command_split[2], 10, 64)
 	handleError(err)
@@ -363,9 +376,10 @@ func handleCas(command_split []string, connection net.Conn, ver int64) {
 
 }
 
-func handleDelete(command_split []string, connection net.Conn) {
+func handleDelete(client_command string, connection net.Conn) {
 
 	var err error
+	command_split := strings.Split(client_command, " ")
 	arg1 := strings.Trim(command_split[1], "\r\n")
 
 	kvmap.RLock()

@@ -16,12 +16,12 @@ type Lsn uint64  //Log sequence number, unique for all time.
 type ErrRedirect int  // See Log.Append. Implements Error interface.
 
 type LogEntry interface {
-	LSN() Lsn
+	Lsn() Lsn
 	Data() []byte
 	Committed() bool
 }
 
-func (x bytearray) LSN() Lsn { 
+func (x bytearray) Lsn() Lsn { 
 
 	seqno := 10	//temporary
 	return Lsn(seqno)
@@ -65,6 +65,7 @@ type Raft struct {
 
 	Cluster *ClusterConfig
 	ThisServerId int
+	LeaderId int
 	CommitCh chan LogEntry
 }
 
@@ -74,7 +75,8 @@ type Raft struct {
 // entries are recovered and replayed
 func NewRaft(config *ClusterConfig, thisServerId int, commitCh chan LogEntry) (*Raft, error) {
 
-	raft = Raft{config,thisServerId,commitCh}
+	var LeaderId = 0 	//we have fixed leader 0th server, since we are not implementing the Leader Elections
+	raft = Raft{config,thisServerId,LeaderId,commitCh}
 	var err error = nil
 	return &raft, err
 }
@@ -87,13 +89,13 @@ func (e ErrRedirect) Error() string {
 func (raft Raft) Append(data []byte) (LogEntry, error){
 
 	// first we have to check if the server is the leader
-	var leaderId int = 0 //dummy
-
-	err := errors.New("Leader is Server"+string(leaderId))
+	err := errors.New("Leader is Server"+string(raft.LeaderId))
 	
-	if raft.ThisServerId != leaderId{
-		//Server is not the leader
-		return nil,err
+	if raft.ThisServerId != raft.LeaderId{
+
+		//e := ErrRedirect(raft.LeaderId)
+		//err_red := errors.New(e.Error())
+		return nil, err
 	} else {
  
 		/*
@@ -133,16 +135,17 @@ func (raft Raft) Append(data []byte) (LogEntry, error){
 
 		for _, server := range servers{
 
+			if(server.Id != raft.ThisServerId){		//brodcast to other than Leder servers
 			host := server.Hostname
 			port := server.LogPort
 
-			//now establish the TCP connection and send the data to the server
+			//now establish the TCP connection and send the data to the follower servers
 			connection, err1 := net.Dial("tcp", host+":"+strconv.Itoa(port))
 			panic(err1)
 
 			_, err3 := connection.Write(data)
 			panic(err3)
-
+			}
 		}
 
 		/*

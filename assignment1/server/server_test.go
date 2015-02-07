@@ -23,11 +23,11 @@ func TestClient(t *testing.T) {
 	setSingleClient(t)
 
 	//Test 10 concurrent clients
-	var i int64
-	for i=0; i<3; i++{
+	//var i int64
+	//for i=0; i<3; i++{
 
-		go setConcurrentClient(eChr,i)
-	}
+	//	go setConcurrentClient(eChr,i)
+	//}
 
 	errstat_stat_concurrent := <-eChr
 	
