@@ -60,42 +60,76 @@ func spawnServer(serverId int){
 	
 	commitCh := make(chan raft.LogEntry)
 
-	var raft_instance *(raft.Raft)
 	//Initialize Raft Object with the cluster configuration, server id and commit channel.
+	var raft_instance *(raft.Raft)
 	raft_instance, err = raft.NewRaft(&cluster_config, serverId, commitCh)
 
 	fmt.Println("Server "+ strconv.Itoa(serverId) +" listening on ClientPort:"+strconv.Itoa(raft_instance.Cluster.Servers[serverId].ClientPort))
 
-
-	//create the TCP address to listen on
-	tcpAddress, err := net.ResolveTCPAddr("tcp", ":"+strconv.Itoa(raft_instance.Cluster.Servers[serverId].ClientPort))
+	//create the TCP address to listen to servers
+	server_tcpAddress, err := net.ResolveTCPAddr("tcp", ":"+strconv.Itoa(raft_instance.Cluster.Servers[serverId].LogPort))
 	handleError(err)
 
 	//now create the listener to listen on the above tcp address
-	listener, err := net.ListenTCP("tcp", tcpAddress)
+	server_listener, err := net.ListenTCP("tcp", server_tcpAddress)
 	handleError(err)
 
-	//keep listening for the client request
-	for {
+	//create the TCP address to listen cliets
+	client_tcpAddress, err := net.ResolveTCPAddr("tcp", ":"+strconv.Itoa(raft_instance.Cluster.Servers[serverId].ClientPort))
+	handleError(err)
 
-		//if the request arrives accept the request from the client and create the connection object
-		connection, err1 := listener.Accept()
+	//now create the listener to listen on the above tcp address
+	client_listener, err := net.ListenTCP("tcp", client_tcpAddress)
+	handleError(err)
 
-		if err1 != nil {
-			handleError(err1)
-			continue
+	//keep listening for other server requests
+	go func(){
+
+		for {
+
+			//if the request arrives accept the request from the client and create the connection object
+			server_connection, err := server_listener.Accept()
+
+			if err != nil {
+				handleError(err)
+				continue
+			}
+
+			go handleServerConnection(server_connection)
 		}
+	}()
 
-		// Now handle the connection
-		go handleConnection(connection, raft_instance, kvmap.key_values)
-		defer connection.Close()
-	}
+	//keep listening for the client requests
+	go func (){
+		for {
+
+			//if the request arrives accept the request from the client and create the connection object
+			client_connection, err1 := client_listener.Accept()
+
+			if err1 != nil {
+				handleError(err1)
+				continue
+			}
+
+			// Now handle the connection
+			go handleClientConnection(client_connection, raft_instance, kvmap.key_values)
+			defer client_connection.Close()
+		}
+	}()
+	
 	// Decrement the counter when the goroutine completes.
 	defer wg.Done()
 }
 
+func handleServerConnection(server_connection net.Conn){
 
-func handleConnection(connection net.Conn, raft_instance *raft.Raft, key_values map[string]*value_and_metadata) {
+	// Check for the ACks from the majority of the followers 
+	//if majority replies commit the entry
+
+}
+
+
+func handleClientConnection(connection net.Conn, raft_instance *raft.Raft, key_values map[string]*value_and_metadata) {
 
 	buffer := make([]byte, 512)
 	buffer_temp := make([]byte, 512)
@@ -178,6 +212,7 @@ func handleConnection(connection net.Conn, raft_instance *raft.Raft, key_values 
 			Error wold be genearted in case if the server is not the leader, 
 			redirect to the server in this case by using the error returned
 			*/
+			connection.Close()	//for now, add redirect code here
 		}
 
 		fmt.Println(logentry)
