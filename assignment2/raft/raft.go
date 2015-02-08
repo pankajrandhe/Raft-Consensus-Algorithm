@@ -2,7 +2,8 @@ package raft
 
 import(
 	"os"
-	"errors"
+	"fmt"
+	//"errors"
 	"strconv"
 	"net"
 )
@@ -84,18 +85,19 @@ func NewRaft(config *ClusterConfig, thisServerId int, commitCh chan LogEntry) (*
 
 // ErrRedirect as an Error object
 func (e ErrRedirect) Error() string {
-	return "Redirect to server " + strconv.Itoa(10)
+	return "ERR_REDIRECT" + raft.Cluster.Servers[int(e)].Hostname + " " + strconv.Itoa(raft.Cluster.Servers[int(e)].ClientPort)
 }
 
 func (raft Raft) Append(data []byte) (LogEntry, error){
 
 	// first we have to check if the server is the leader
-	err := errors.New("Leader is Server"+string(raft.LeaderId))
-	
+	//err := errors.New("Leader is Server"+string(raft.LeaderId))
+		fmt.Println("This Server ID = " + strconv.Itoa(raft.ThisServerId))
+		fmt.Println("Leader ID = " + strconv.Itoa(raft.LeaderId))
 	if raft.ThisServerId != raft.LeaderId{
-		
-		err:= errors.New(ErrRedirect(raft.LeaderId))
-		return nil, err
+
+		return nil, ErrRedirect(raft.LeaderId)
+
 	} else {
  
 		/*
