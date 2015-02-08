@@ -39,7 +39,7 @@ func main(){
 
 	//Read the json file and get the server configurations 
 	var cluster_config raft.ClusterConfig
-	server_configs, err := ioutil.ReadFile("/home/pankaj/go/src/github.com/pankajrandhe/cs733/assignment2/servers_json.json")
+	server_configs, err := ioutil.ReadFile("/home/avp/GO/src/github.com/pankajrandhe/cs733/assignment2/servers_json.json")
 	if err != nil{
 		panic(err)
 	}
@@ -74,7 +74,7 @@ func main(){
 	fmt.Println("Server "+ strconv.Itoa(serverId) +" listening on ClientPort:"+strconv.Itoa(raft_instance.Cluster.Servers[serverId].ClientPort))
 	fmt.Println("Server "+ strconv.Itoa(serverId) +" listening on LogPort:"+strconv.Itoa(raft_instance.Cluster.Servers[serverId].LogPort))
 
-	//keep listening for acks from follower servers if the server is the Leader
+	//keep listening for acks from follower servers if the server the Leader
 	wg.Add(1)
 	go func(){
 
@@ -89,7 +89,7 @@ func main(){
 
 			wg.Add(1)
 
-			go handleServerConnection(server_connection,serverId)
+			go handleServerConnection(server_connection,raft_instance ,serverId)
 			defer server_connection.Close()
 		}
 	defer wg.Done()
@@ -118,7 +118,7 @@ func main(){
 	wg.Wait()
 }
 
-func handleServerConnection(server_connection net.Conn, serverId int){
+func handleServerConnection(server_connection net.Conn, raft_instance *raft.Raft, serverId int){
 
 	//Case1: If the server is the Leader it will listen only for ACKs from the follower servers
 	//Case2: If the server is the follower it will listen for the Log Entries on the connection and reply back with ACK if commits
@@ -153,27 +153,58 @@ func handleServerConnection(server_connection net.Conn, serverId int){
 
 		data = <-ch
 		//if the server is the leader then only it has to distinguish between the ACK or Log Broadcasted
-		if serverId == raft_instance.LeaderId{
+		if isACK(string(data)) {
 
 			// possibilities are : Logentry OR ACK
-			if isACK(data){
+			
+				fmt.Println("Ack Received. LSN: "+ string(data))
+				temp_lsn, _ := strconv.ParseInt(string(data),10,64)
+				lsn := raft.Lsn(temp_lsn)
+				//Check if value for lsn exists in Map
+				if _, ok := raft_instance.MajorityMap[lsn]; ok {
+					raft_instance.MajorityMap[lsn] = raft_instance.MajorityMap[lsn] + 1
+					fmt.Println("Hello")
+					fmt.Println(strconv.Itoa(int(lsn))+" : "+ strconv.Itoa(raft_instance.MajorityMap[lsn]))
+				}
 
-			}
+			
 
 		} else {
 
+			fmt.Println("Log Entry Received at Server "+ strconv.Itoa(serverId))
+
+
+                                //Send back the ACK (ACK=Lsn) to the leader
+                                ack := strings.Split(string(data)," ")[0]
+                                fmt.Println(serverId," sending ack:",ack)
+                                Leader_port := raft_instance.Cluster.Servers[raft_instance.LeaderId].LogPort
+                                Leader_connection, _ := net.Dial("tcp",":"+strconv.Itoa(Leader_port))
+                                _, err3 := Leader_connection.Write([]byte(ack))
+                                fmt.Println(err3)
+                                handleError(err3)
+                }
+                
+
 			// only possibility is the logentry
-		}	 
+			 
 	}
 
 	defer wg.Done()
 }
 
-func isACK(data string) (respone bool){
+func isACK(data string) (response bool){
 
-	respone = HasPrefix(data, "ack") 
-	return respone
+	fmt.Println(data)
+
+	count := strings.Count(data, " ")
+	if count>1 {
+		response = false
+	} else {
+		response = true
+	}
+	return response
 }
+
 
 func handleClientConnection(connection net.Conn, raft_instance *raft.Raft, key_values map[string]*value_and_metadata) {
 
@@ -250,7 +281,9 @@ func handleClientConnection(connection net.Conn, raft_instance *raft.Raft, key_v
 
 		// Once the client command is ready call the Append()
 		logentry, err := raft_instance.Append(client_command)
-		fmt.Println(logentry)
+		 //_, err := raft_instance.Append(client_command)
+		 	//fmt.Println(logentry)
+		raft_instance.MajorityMap[logentry.Log_lsn] = 0
 		if err!= nil{
 
 			s := err.Error()

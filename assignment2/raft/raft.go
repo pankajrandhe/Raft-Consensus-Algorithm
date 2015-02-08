@@ -7,6 +7,9 @@ import(
 	"strconv"
 	"net"
 	//"log"
+	//"time"
+	"math/rand"
+	//"fmt"
 )
 
 var raft Raft
@@ -26,8 +29,8 @@ type LogEntry interface {
 //################Add the logic for unique seq no.
 func (x LogStruct) Lsn() Lsn { 
 
-	seqno := 10	//temporary
-	return Lsn(seqno)
+	return Lsn(uint64(rand.Int63()))
+	//return Lsn(uint64(time.Now().UnixNano() / uint64(time.Millisecond)))
 }
 
 func (x LogStruct) Data(data []byte) []byte {
@@ -70,6 +73,7 @@ type Raft struct {
 	ThisServerId int
 	LeaderId int
 	CommitCh chan LogEntry
+	MajorityMap map[Lsn]int
 }
 
 type LogStruct struct {
@@ -86,7 +90,10 @@ type LogStruct struct {
 func NewRaft(config *ClusterConfig, thisServerId int, commitCh chan LogEntry) (*Raft, error) {
 
 	var LeaderId = 0 	//we have fixed leader 0th server, since we are not implementing the Leader Elections
-	raft = Raft{config,thisServerId,LeaderId,commitCh}
+	MajorityMap := make(map[Lsn]int)
+	raft = Raft{config,thisServerId,LeaderId,commitCh, MajorityMap}
+	//Each Raft Object will have a Majority Map, to be used only by the leader
+
 	var err error = nil
 	return &raft, err
 }
@@ -108,6 +115,11 @@ func (raft Raft) Append(data []byte) (LogEntry, error){
 		// Prepare the LogEntry
 		var log_instance LogStruct
 		log_instance = LogStruct{log_instance.Lsn(),log_instance.Data(data),log_instance.Committed()}
+
+
+		//Initialize number of ack for the lsn to 0
+
+
  
 		/*
 		* Write the received log entry - data byte to a file in the local disk 
