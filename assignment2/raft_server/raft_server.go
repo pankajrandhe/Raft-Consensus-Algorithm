@@ -157,15 +157,24 @@ func handleServerConnection(server_connection net.Conn, raft_instance *raft.Raft
 
 			// possibilities are : Logentry OR ACK
 			
-				fmt.Println("Ack Received. LSN: "+ string(data))
-				temp_lsn, _ := strconv.ParseInt(string(data),10,64)
-				lsn := raft.Lsn(temp_lsn)
+				fmt.Println("Ack Received. LSN: "+ strings.Fields(string(data))[0])
+				//fmt.Println(err)
+				lsn := strings.Fields(string(data))[0]
+				fmt.Println("Raft_server")
+					fmt.Println(lsn+" : "+ strconv.Itoa(raft_instance.MajorityMap[lsn]))
 				//Check if value for lsn exists in Map
-				if _, ok := raft_instance.MajorityMap[lsn]; ok {
+				//if _, ok := raft_instance.MajorityMap[lsn]; ok {
 					raft_instance.MajorityMap[lsn] = raft_instance.MajorityMap[lsn] + 1
-					fmt.Println("Hello")
-					fmt.Println(strconv.Itoa(int(lsn))+" : "+ strconv.Itoa(raft_instance.MajorityMap[lsn]))
-				}
+					
+					//Currently assuming majority to 2
+					if raft_instance.MajorityMap[lsn] >= 2 {
+					fmt.Println("Majority!!!!!!!!!!!!!")
+					}
+					//fmt.Println("Hello")
+
+				//} else {
+				//	fmt.Println("Not Found in Map")
+			//	}
 
 			
 
@@ -280,10 +289,11 @@ func handleClientConnection(connection net.Conn, raft_instance *raft.Raft, key_v
 		}
 
 		// Once the client command is ready call the Append()
-		logentry, err := raft_instance.Append(client_command)
-		 //_, err := raft_instance.Append(client_command)
+		//var logentry raft.LogStruct
+		//logentry, err := raft_instance.Append(client_command)
+		 _, err := raft_instance.Append(client_command)
 		 	//fmt.Println(logentry)
-		raft_instance.MajorityMap[logentry.Log_lsn] = 0
+		
 		if err!= nil{
 
 			s := err.Error()

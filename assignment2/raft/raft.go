@@ -2,7 +2,7 @@ package raft
 
 import(
 	"os"
-	//"fmt"
+	"fmt"
 	//"errors"
 	"strconv"
 	"net"
@@ -22,25 +22,25 @@ type ErrRedirect int  // See Log.Append. Implements Error interface.
 
 type LogEntry interface {
 	Lsn() Lsn
-	Data([]byte) []byte
+	Data() []byte
 	Committed() bool
 }
 
 //################Add the logic for unique seq no.
 func (x LogStruct) Lsn() Lsn { 
 
-	return Lsn(uint64(rand.Int63()))
+	return x.Log_lsn
 	//return Lsn(uint64(time.Now().UnixNano() / uint64(time.Millisecond)))
 }
 
-func (x LogStruct) Data(data []byte) []byte {
+func (x LogStruct) Data() []byte {
 
-	return data
+	return x.Log_data
 }
 
 func (x LogStruct) Committed() bool{
 
-	return false
+	return x.Log_commit
 }
 
 type SharedLog interface {
@@ -73,7 +73,7 @@ type Raft struct {
 	ThisServerId int
 	LeaderId int
 	CommitCh chan LogEntry
-	MajorityMap map[Lsn]int
+	MajorityMap map[string]int
 }
 
 type LogStruct struct {
@@ -90,7 +90,7 @@ type LogStruct struct {
 func NewRaft(config *ClusterConfig, thisServerId int, commitCh chan LogEntry) (*Raft, error) {
 
 	var LeaderId = 0 	//we have fixed leader 0th server, since we are not implementing the Leader Elections
-	MajorityMap := make(map[Lsn]int)
+	MajorityMap := make(map[string]int)
 	raft = Raft{config,thisServerId,LeaderId,commitCh, MajorityMap}
 	//Each Raft Object will have a Majority Map, to be used only by the leader
 
@@ -114,11 +114,13 @@ func (raft Raft) Append(data []byte) (LogEntry, error){
 
 		// Prepare the LogEntry
 		var log_instance LogStruct
-		log_instance = LogStruct{log_instance.Lsn(),log_instance.Data(data),log_instance.Committed()}
-
+		lsn := Lsn(uint64(rand.Int63()))
+		log_instance = LogStruct{lsn,data,false}
 
 		//Initialize number of ack for the lsn to 0
-
+		raft.MajorityMap[strconv.Itoa(int(log_instance.Lsn()))] = 0
+		fmt.Println("raft")
+		fmt.Println(strconv.Itoa(int(log_instance.Lsn())) + " : " + strconv.Itoa(raft.MajorityMap[string(log_instance.Lsn())]))
 
  
 		/*
