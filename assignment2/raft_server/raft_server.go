@@ -31,10 +31,6 @@ var kvmap = struct {
 //Using WaitGroup, so that the goroutine get time for execution
 var wg sync.WaitGroup
 
-//Declare the serverId
-var serverId int
-
-
 func main(){
 
 	// Pass the server id as the parameter from command line
@@ -80,13 +76,10 @@ func main(){
 
 	//keep listening for acks from follower servers if the server is the Leader
 	wg.Add(1)
-
 	go func(){
 
 		for {
 
-			fmt.Println("listening for ack")
-			//if the request arrives accept the request from the client and create the connection object
 			server_connection, err := server_listener.Accept()
 
 			if err != nil {
@@ -96,8 +89,7 @@ func main(){
 
 			wg.Add(1)
 
-			go handleServerConnection(server_connection)
-
+			go handleServerConnection(server_connection,serverId)
 			defer server_connection.Close()
 		}
 	defer wg.Done()
@@ -108,8 +100,6 @@ func main(){
 	go func (){
 		for {
 
-			//if the request arrives accept the request from the client and create the connection object
-			fmt.Println("listening for clients")
 			client_connection, err1 := client_listener.Accept()
 
 			if err1 != nil {
@@ -119,7 +109,6 @@ func main(){
 
 			wg.Add(1)
 
-			// Now handle the connection
 			go handleClientConnection(client_connection, raft_instance, kvmap.key_values)
 			defer client_connection.Close()
 		}
@@ -129,20 +118,14 @@ func main(){
 	wg.Wait()
 }
 
-func checkMajority(ack []byte){
-
-	//check majority against each log entry
-
-}
-
-func handleServerConnection(server_connection net.Conn){
+func handleServerConnection(server_connection net.Conn, serverId int){
 
 	//Case1: If the server is the Leader it will listen only for ACKs from the follower servers
 	//Case2: If the server is the follower it will listen for the Log Entries on the connection and reply back with ACK if commits
 
 	ch := make(chan []byte)
 	eCh := make(chan error)
-	var ack []byte
+	var data []byte
 
 	wg.Add(1)
 
@@ -163,20 +146,34 @@ func handleServerConnection(server_connection net.Conn){
 		}
 
 		defer wg.Done()
-
 	}(ch,eCh)
 
-	// Keep reading from the channel for the ACKs, and check for the majority
+	// Keep reading from the channel for the data
 	for {
 
-		ack = <-ch
-		fmt.Println(strconv.Itoa(serverId)+" got"+string(ack))
-		checkMajority(ack)		//ack will be equal to the Lsn, 
+		data = <-ch
+		//if the server is the leader then only it has to distinguish between the ACK or Log Broadcasted
+		if serverId == raft_instance.LeaderId{
+
+			// possibilities are : Logentry OR ACK
+			if isACK(data){
+
+			}
+
+		} else {
+
+			// only possibility is the logentry
+		}	 
 	}
 
 	defer wg.Done()
 }
 
+func isACK(data string) (respone bool){
+
+	respone = HasPrefix(data, "ack") 
+	return respone
+}
 
 func handleClientConnection(connection net.Conn, raft_instance *raft.Raft, key_values map[string]*value_and_metadata) {
 

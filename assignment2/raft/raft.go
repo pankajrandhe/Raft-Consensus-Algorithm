@@ -2,10 +2,11 @@ package raft
 
 import(
 	"os"
-	"fmt"
+	//"fmt"
 	//"errors"
 	"strconv"
 	"net"
+	//"log"
 )
 
 var raft Raft
@@ -22,6 +23,7 @@ type LogEntry interface {
 	Committed() bool
 }
 
+//################Add the logic for unique seq no.
 func (x LogStruct) Lsn() Lsn { 
 
 	seqno := 10	//temporary
@@ -96,10 +98,6 @@ func (e ErrRedirect) Error() string {
 
 func (raft Raft) Append(data []byte) (LogEntry, error){
 
-	// first we have to check if the server is the leader
-	//err := errors.New("Leader is Server"+string(raft.LeaderId))
-	//	fmt.Println("This Server ID = " + strconv.Itoa(raft.ThisServerId))
-	//	fmt.Println("Leader ID = " + strconv.Itoa(raft.LeaderId))
 	if raft.ThisServerId != raft.LeaderId{
 
 		return nil, ErrRedirect(raft.LeaderId)
@@ -150,25 +148,15 @@ func (raft Raft) Append(data []byte) (LogEntry, error){
 
 		for _, server := range servers{
 
-			if(server.Id != raft.ThisServerId){		//brodcast to other than Leder servers
-			host := server.Hostname
+			//host := server.Hostname
 			port := server.LogPort
 
-			fmt.Println(host+" "+strconv.Itoa(port)+"\r\n")
-
 			//now establish the TCP connection and send the data to the follower servers
-			connection, err1 := net.Dial("tcp", host+":"+strconv.Itoa(port))
-			fmt.Println("error here:",err1)
-			//panic(err1)
-
-			fmt.Println("connected to follower ")
-
-			_, err3 := connection.Write(data)
-			fmt.Println("error writing: ",err3)
-			//panic(err3)
-			}
+			connection, _ := net.Dial("tcp",":"+strconv.Itoa(port))
+			//fmt.Println("error here:",err1)
+			_, _ = connection.Write([]byte(strconv.Itoa(int(log_instance.Log_lsn))+" "+string(log_instance.Log_data)+"false"))
+			//fmt.Println("error writing: ",err3)
 		}
-
 		// Prepare the log entry and return it 
 		return log_instance,nil
 	}
