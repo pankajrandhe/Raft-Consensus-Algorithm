@@ -18,24 +18,24 @@ type ErrRedirect int  // See Log.Append. Implements Error interface.
 
 type LogEntry interface {
 	Lsn() Lsn
-	Data([]byte) []byte
+	Data() []byte
 	Committed() bool
 }
 
-func (x LogStruct) Lsn() Lsn { 
+func (x bytearray) Lsn() Lsn { 
 
 	seqno := 10	//temporary
 	return Lsn(seqno)
 }
 
-func (x LogStruct) Data(data []byte) []byte {
+func (x bytearray) Data() []byte {
 
-	return data
+	return x
 }
 
-func (x LogStruct) Committed() bool{
+func (x bytearray) Committed() bool{
 
-	return false
+	return true
 }
 
 type SharedLog interface {
@@ -68,13 +68,7 @@ type Raft struct {
 	ThisServerId int
 	LeaderId int
 	CommitCh chan LogEntry
-}
 
-type LogStruct struct {
-
-	Log_lsn Lsn
-	Log_data []byte
-	Log_commit bool
 }
 
 // Creates a raft object. This implements the SharedLog interface.
@@ -91,25 +85,20 @@ func NewRaft(config *ClusterConfig, thisServerId int, commitCh chan LogEntry) (*
 
 // ErrRedirect as an Error object
 func (e ErrRedirect) Error() string {
-	return "ERR_REDIRECT " + raft.Cluster.Servers[int(e)].Hostname + " " + strconv.Itoa(raft.Cluster.Servers[int(e)].ClientPort)+"\r\n"
+	return "ERR_REDIRECT" + raft.Cluster.Servers[int(e)].Hostname + " " + strconv.Itoa(raft.Cluster.Servers[int(e)].ClientPort)
 }
 
 func (raft Raft) Append(data []byte) (LogEntry, error){
 
 	// first we have to check if the server is the leader
 	//err := errors.New("Leader is Server"+string(raft.LeaderId))
-	//	fmt.Println("This Server ID = " + strconv.Itoa(raft.ThisServerId))
-	//	fmt.Println("Leader ID = " + strconv.Itoa(raft.LeaderId))
+		fmt.Println("This Server ID = " + strconv.Itoa(raft.ThisServerId))
+		fmt.Println("Leader ID = " + strconv.Itoa(raft.LeaderId))
 	if raft.ThisServerId != raft.LeaderId{
 
 		return nil, ErrRedirect(raft.LeaderId)
 
 	} else {
-
-
-		// Prepare the LogEntry
-		var log_instance LogStruct
-		log_instance = LogStruct{log_instance.Lsn(),log_instance.Data(data),log_instance.Committed()}
  
 		/*
 		* Write the received log entry - data byte to a file in the local disk 
@@ -136,9 +125,7 @@ func (raft Raft) Append(data []byte) (LogEntry, error){
 
 		defer logFile.Close()
 
-
-		// ########NOTE: DUMMY value for commit, remember to correct it!
-		if _, err = logFile.WriteString("\n"+strconv.Itoa(int(log_instance.Log_lsn))+" "+string(log_instance.Log_data)+"false"); err != nil {
+		if _, err = logFile.WriteString("\n"+string(data)); err != nil {
 		    panic(err)
 		}
 
@@ -154,23 +141,20 @@ func (raft Raft) Append(data []byte) (LogEntry, error){
 			host := server.Hostname
 			port := server.LogPort
 
-			fmt.Println(host+" "+strconv.Itoa(port)+"\r\n")
-
 			//now establish the TCP connection and send the data to the follower servers
 			connection, err1 := net.Dial("tcp", host+":"+strconv.Itoa(port))
-			fmt.Println("error here:",err1)
-			//panic(err1)
-
-			fmt.Println("connected to follower ")
+			panic(err1)
 
 			_, err3 := connection.Write(data)
-			fmt.Println("error writing: ",err3)
-			//panic(err3)
+			panic(err3)
 			}
 		}
 
-		// Prepare the log entry and return it 
-		return log_instance,nil
+		/*
+		* Code for receving response from other servers; if majority, write to KV Store and respond to Client.
+		*/
+
+		// Prepare the log entry and return it else error
+		return bytearray(data),nil
 	}
 }
-

@@ -8,7 +8,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"os"
 	"io/ioutil"
 	"encoding/json"
 	"github.com/pankajrandhe/cs733/assignment2/raft"
@@ -31,15 +30,20 @@ var kvmap = struct {
 //Using WaitGroup, so that the goroutine get time for execution
 var wg sync.WaitGroup
 
-//Declare the serverId
-var serverId int
+func main() {
 
+//Simulate and start the cluster of servers.
+	for i := 0; i < 3; i++ {
+	// Increment the WaitGroup counter.
+	wg.Add(1)
+    go spawnServer(i)
+}
+// Wait forever.
+ wg.Wait()
 
-func main(){
-
-	// Pass the server id as the parameter from command line
-	serverId, err := strconv.Atoi(os.Args[1])
-	handleError(err)
+}
+ 
+func spawnServer(serverId int){
 
 	//Read the json file and get the server configurations 
 	var cluster_config raft.ClusterConfig
@@ -52,13 +56,16 @@ func main(){
 	if err_json != nil{
 		panic(err_json)
 	} 
+
 	
 	commitCh := make(chan raft.LogEntry)
 
 	//Initialize Raft Object with the cluster configuration, server id and commit channel.
 	var raft_instance *(raft.Raft)
 	raft_instance, err = raft.NewRaft(&cluster_config, serverId, commitCh)
-	
+
+	fmt.Println("Server "+ strconv.Itoa(serverId) +" listening on ClientPort:"+strconv.Itoa(raft_instance.Cluster.Servers[serverId].ClientPort))
+
 	//create the TCP address to listen to servers
 	server_tcpAddress, err := net.ResolveTCPAddr("tcp", ":"+strconv.Itoa(raft_instance.Cluster.Servers[serverId].LogPort))
 	handleError(err)
@@ -75,17 +82,11 @@ func main(){
 	client_listener, err := net.ListenTCP("tcp", client_tcpAddress)
 	handleError(err)
 
-	fmt.Println("Server "+ strconv.Itoa(serverId) +" listening on ClientPort:"+strconv.Itoa(raft_instance.Cluster.Servers[serverId].ClientPort))
-	fmt.Println("Server "+ strconv.Itoa(serverId) +" listening on LogPort:"+strconv.Itoa(raft_instance.Cluster.Servers[serverId].LogPort))
-
-	//keep listening for acks from follower servers if the server is the Leader
-	wg.Add(1)
-
+	//keep listening for other server requests
 	go func(){
 
 		for {
 
-			fmt.Println("listening for ack")
 			//if the request arrives accept the request from the client and create the connection object
 			server_connection, err := server_listener.Accept()
 
@@ -94,22 +95,15 @@ func main(){
 				continue
 			}
 
-			wg.Add(1)
-
 			go handleServerConnection(server_connection)
-
-			defer server_connection.Close()
 		}
-	defer wg.Done()
 	}()
 
-	wg.Add(1)
 	//keep listening for the client requests
 	go func (){
 		for {
 
 			//if the request arrives accept the request from the client and create the connection object
-			fmt.Println("listening for clients")
 			client_connection, err1 := client_listener.Accept()
 
 			if err1 != nil {
@@ -117,21 +111,20 @@ func main(){
 				continue
 			}
 
-			wg.Add(1)
-
 			// Now handle the connection
 			go handleClientConnection(client_connection, raft_instance, kvmap.key_values)
 			defer client_connection.Close()
 		}
-		defer wg.Done()
 	}()
 	
-	wg.Wait()
+	// Decrement the counter when the goroutine completes.
+	defer wg.Done()
 }
 
-func checkMajority(ack []byte){
+func checkMajority(){
 
 	//check majority against each log entry
+
 
 }
 
@@ -144,14 +137,12 @@ func handleServerConnection(server_connection net.Conn){
 	eCh := make(chan error)
 	var ack []byte
 
-	wg.Add(1)
-
 	// Start a goroutine to read from our server-to-server connections
 	go func(ch chan []byte, eCh chan error) {
 		for {
 
 			response := make([]byte, 512)
-			_, err := server_connection.Read(response)
+			_, err := connection.Read(response)
 
 			if err != nil {
 				// send an error if it's encountered
@@ -161,20 +152,14 @@ func handleServerConnection(server_connection net.Conn){
 			// send data if we read some.
 			ch <- response
 		}
-
-		defer wg.Done()
-
 	}(ch,eCh)
 
 	// Keep reading from the channel for the ACKs, and check for the majority
 	for {
 
-		ack = <-ch
-		fmt.Println(strconv.Itoa(serverId)+" got"+string(ack))
+		ack <- ch
 		checkMajority(ack)		//ack will be equal to the Lsn, 
 	}
-
-	defer wg.Done()
 }
 
 
@@ -253,20 +238,13 @@ func handleClientConnection(connection net.Conn, raft_instance *raft.Raft, key_v
 
 		// Once the client command is ready call the Append()
 		logentry, err := raft_instance.Append(client_command)
-		fmt.Println(logentry)
 		if err!= nil{
-
-			s := err.Error()
-			connection.Write([]byte(s)) 
-			//fmt.Println(err)
+			panic(err)
 			/* 
-			Error would be genearted in case if the server is not the leader, 
+			Error wold be genearted in case if the server is not the leader, 
 			redirect to the server in this case by using the error returned
 			*/
-			
-			//connection.Close()	//for now, add redirect code here
-			continue
-		
+			connection.Close()	//for now, add redirect code here
 		}		
 
 		switch case_parameter {
@@ -297,8 +275,6 @@ func handleClientConnection(connection net.Conn, raft_instance *raft.Raft, key_v
 		}
 
 	}
-
-	defer wg.Done()
 }
 
 func handleSet(client_command string, connection net.Conn, ver int64) {
@@ -511,4 +487,3 @@ func exp_timer(key string, key_values map[string]*value_and_metadata) {
 	// as soon as the timer expires delete the record
 	delete(key_values, key)
 }
-
