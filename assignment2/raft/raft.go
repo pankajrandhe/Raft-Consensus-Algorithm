@@ -2,14 +2,14 @@ package raft
 
 import(
 	"os"
-	"fmt"
+	//"fmt"
 	//"errors"
 	"strconv"
 	"net"
 	//"log"
 	//"time"
 	"math/rand"
-	//"fmt"
+	//"bytes"
 )
 
 var raft Raft
@@ -30,7 +30,6 @@ type LogEntry interface {
 func (x LogStruct) Lsn() Lsn { 
 
 	return x.Log_lsn
-	//return Lsn(uint64(time.Now().UnixNano() / uint64(time.Millisecond)))
 }
 
 func (x LogStruct) Data() []byte {
@@ -74,6 +73,7 @@ type Raft struct {
 	LeaderId int
 	CommitCh chan LogEntry
 	MajorityMap map[string]int
+	CmdHistMap map[string]string
 }
 
 type LogStruct struct {
@@ -91,7 +91,8 @@ func NewRaft(config *ClusterConfig, thisServerId int, commitCh chan LogEntry) (*
 
 	var LeaderId = 0 	//we have fixed leader 0th server, since we are not implementing the Leader Elections
 	MajorityMap := make(map[string]int)
-	raft = Raft{config,thisServerId,LeaderId,commitCh, MajorityMap}
+	CmdHistMap := make(map[string]string)
+	raft = Raft{config,thisServerId,LeaderId,commitCh, MajorityMap, CmdHistMap}
 	//Each Raft Object will have a Majority Map, to be used only by the leader
 
 	var err error = nil
@@ -118,11 +119,10 @@ func (raft Raft) Append(data []byte) (LogEntry, error){
 		log_instance = LogStruct{lsn,data,false}
 
 		//Initialize number of ack for the lsn to 0
-		raft.MajorityMap[strconv.Itoa(int(log_instance.Lsn()))] = 0
-		fmt.Println("raft")
-		fmt.Println(strconv.Itoa(int(log_instance.Lsn())) + " : " + strconv.Itoa(raft.MajorityMap[string(log_instance.Lsn())]))
-
- 
+		string_lsn := strconv.Itoa(int(log_instance.Lsn()))
+		raft.MajorityMap[string_lsn] = 0
+		raft.CmdHistMap[string_lsn] = string(data)
+		
 		/*
 		* Write the received log entry - data byte to a file in the local disk 
 		*
@@ -167,9 +167,7 @@ func (raft Raft) Append(data []byte) (LogEntry, error){
 
 			//now establish the TCP connection and send the data to the follower servers
 			connection, _ := net.Dial("tcp",":"+strconv.Itoa(port))
-			//fmt.Println("error here:",err1)
-			_, _ = connection.Write([]byte(strconv.Itoa(int(log_instance.Log_lsn))+" "+string(log_instance.Log_data)+"false"))
-			//fmt.Println("error writing: ",err3)
+			_, _ = connection.Write([]byte(strconv.Itoa(int(log_instance.Lsn()))+" "+string(log_instance.Data())+" false"))
 		}
 		// Prepare the log entry and return it 
 		return log_instance,nil

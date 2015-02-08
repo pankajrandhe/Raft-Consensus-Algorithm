@@ -12,6 +12,7 @@ import (
 	"io/ioutil"
 	"encoding/json"
 	"github.com/pankajrandhe/cs733/assignment2/raft"
+	"bytes"
 )
 
 // Lets first create the structure which will hold the value and all other meta-data for the key
@@ -152,29 +153,23 @@ func handleServerConnection(server_connection net.Conn, raft_instance *raft.Raft
 	for {
 
 		data = <-ch
+		n := bytes.Index(data, []byte{0})
+		string_data := string(data[:n])
 		//if the server is the leader then only it has to distinguish between the ACK or Log Broadcasted
-		if isACK(string(data)) {
+		if isACK(string_data) {
 
 			// possibilities are : Logentry OR ACK
 			
-				fmt.Println("Ack Received. LSN: "+ strings.Fields(string(data))[0])
-				//fmt.Println(err)
-				lsn := strings.Fields(string(data))[0]
-				fmt.Println("Raft_server")
-					fmt.Println(lsn+" : "+ strconv.Itoa(raft_instance.MajorityMap[lsn]))
-				//Check if value for lsn exists in Map
-				//if _, ok := raft_instance.MajorityMap[lsn]; ok {
+				fmt.Println("Ack Received by Leader. LSN: "+ strings.Fields(string(data))[0])
+				lsn := strings.Split(string_data," ")[0]
+
 					raft_instance.MajorityMap[lsn] = raft_instance.MajorityMap[lsn] + 1
-					
 					//Currently assuming majority to 2
 					if raft_instance.MajorityMap[lsn] >= 2 {
-					fmt.Println("Majority!!!!!!!!!!!!!")
+					fmt.Println("Majority")
+					fmt.Println("Command to be exec on State Machine :" + raft_instance.CmdHistMap[lsn])
 					}
-					//fmt.Println("Hello")
 
-				//} else {
-				//	fmt.Println("Not Found in Map")
-			//	}
 
 			
 
@@ -184,12 +179,11 @@ func handleServerConnection(server_connection net.Conn, raft_instance *raft.Raft
 
 
                                 //Send back the ACK (ACK=Lsn) to the leader
-                                ack := strings.Split(string(data)," ")[0]
-                                fmt.Println(serverId," sending ack:",ack)
+                                ack := strings.Split(string_data," ")[0]
+                                fmt.Println(serverId," Sending Ack:",ack)
                                 Leader_port := raft_instance.Cluster.Servers[raft_instance.LeaderId].LogPort
                                 Leader_connection, _ := net.Dial("tcp",":"+strconv.Itoa(Leader_port))
                                 _, err3 := Leader_connection.Write([]byte(ack))
-                                fmt.Println(err3)
                                 handleError(err3)
                 }
                 
@@ -202,8 +196,6 @@ func handleServerConnection(server_connection net.Conn, raft_instance *raft.Raft
 }
 
 func isACK(data string) (response bool){
-
-	fmt.Println(data)
 
 	count := strings.Count(data, " ")
 	if count>1 {
