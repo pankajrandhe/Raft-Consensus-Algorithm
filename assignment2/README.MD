@@ -21,15 +21,16 @@ This assignment serves as the basis for the complete implementation of the Raft 
  
   `go install github.com/pankajrandhe/cs733/assignment2/raft_server/`
  
-  `go github.com/pankajrandhe/cs733/assignment2/runner/`
+  `go install github.com/pankajrandhe/cs733/assignment2/runner/`
  
   `runner`
  
   This will start the servers, specified in the servers_json.json file.
- 
-* Now to send commands to the leader as a client 
+  
+* To test run the following:
 
-  `telnet localhost 9000` // [9000: Client Listening Port of the Leader Server]
+ `go test github.com/pankajrandhe/cs733/assignment2/raft_server/`
+ 
   
 ###KV Store Protocol Specification###
 
