@@ -2,10 +2,8 @@ package main
 
 import (
 	"log"
-	"os"
 	"os/exec"
 	"sync"
-	"fmt"
 )
 
 var wg sync.WaitGroup
