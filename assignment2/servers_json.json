@@ -18,6 +18,12 @@
       "Hostname": "localhost",
       "ClientPort": 9002,
       "LogPort": 10002
+    },
+ {
+      "Id": 3,
+      "Hostname": "localhost",
+      "ClientPort": 9003,
+      "LogPort": 10003
     }
   ]
 }

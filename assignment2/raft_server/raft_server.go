@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"github.com/pankajrandhe/cs733/assignment2/raft"
 	"bytes"
+	"math/rand"
 )
 
 // Lets first create the structure which will hold the value and all other meta-data for the key
@@ -42,7 +43,7 @@ func main(){
 
 	//Read the json file and get the server configurations 
 	var cluster_config raft.ClusterConfig
-	server_configs, err := ioutil.ReadFile("/home/pankaj/go/src/github.com/pankajrandhe/cs733/assignment2/servers_json.json")
+	server_configs, err := ioutil.ReadFile("/home/avp/GO/src/github.com/pankajrandhe/cs733/assignment2/servers_json.json")
 	if err != nil{
 		panic(err)
 	}
@@ -151,6 +152,18 @@ func handleServerConnection(server_connection net.Conn, raft_instance *raft.Raft
 		defer wg.Done()
 	}(ch,eCh)
 
+
+	go func() {
+
+		for{
+		var logStruct raft.LogEntry
+		logStruct = <- raft_instance.CommitCh
+		string_lsn := strconv.Itoa(int(logStruct.Lsn()))
+		stateMachine(raft_instance.ConnectionMap[string_lsn], logStruct.Data())
+	}
+
+		}()
+
 	// Keep reading from the channel for the data
 	for {
 
@@ -170,7 +183,11 @@ func handleServerConnection(server_connection net.Conn, raft_instance *raft.Raft
 				//Calculate majority using n/2, n is the total number of servers
 				if raft_instance.MajorityMap[lsn] > (raft_instance.ServersCount/2) {
 					fmt.Println("Acks. Received from Majority of Servers")
-					fmt.Println("Command to be exec on State Machine :" + raft_instance.CmdHistMap[lsn])
+					fmt.Println("Command to be exec on State Machine :" + string(raft_instance.CmdHistMap[lsn].Data()))
+					raft_instance.CommitCh <- raft_instance.CmdHistMap[lsn]
+
+
+
 					//Make the ACK Count to 0
 					raft_instance.MajorityMap[lsn] = 0
 				}
@@ -219,17 +236,19 @@ func handleClientConnection(connection net.Conn, raft_instance *raft.Raft, key_v
 
 	
 	
-	var ver int64 = 1
+	
 
 	for {
 
-		client_command, case_parameter := getClientCommand(connection)
+		client_command, _ := getClientCommand(connection)
 		
 
 		// Once the client command is ready call the Append()
 		//var logentry raft.LogStruct
 		//logentry, err := raft_instance.Append(client_command)
-		 _, err := raft_instance.Append(client_command)
+		 LogEntry, err := raft_instance.Append(client_command)
+		 string_lsn := strconv.Itoa(int(LogEntry.Lsn()))
+		 raft_instance.ConnectionMap[string_lsn] = connection
 		 	//fmt.Println(logentry)
 		
 		if err!= nil{
@@ -247,6 +266,21 @@ func handleClientConnection(connection net.Conn, raft_instance *raft.Raft, key_v
 		
 		}		
 
+	
+	}
+
+	defer wg.Done()
+
+
+
+}
+
+func stateMachine(connection net.Conn, client_command []byte) {
+
+		case_parameter := strings.Split(string(client_command), " ")[0]
+
+		ver := rand.Int63()
+
 		switch case_parameter {
 
 		case "set":
@@ -256,7 +290,7 @@ func handleClientConnection(connection net.Conn, raft_instance *raft.Raft, key_v
 			handleGet(string(client_command), connection)
 
 		case "getm":
-			handleGetm(string(client_command), connection)
+			handleGetm(string(client_command),connection)
 
 		case "cas":
 			handleCas(string(client_command), connection, ver)
@@ -274,9 +308,6 @@ func handleClientConnection(connection net.Conn, raft_instance *raft.Raft, key_v
 			return
 		}
 
-	}
-
-	defer wg.Done()
 }
 
 func getClientCommand(connection net.Conn) (client_command []byte, case_parameter string){

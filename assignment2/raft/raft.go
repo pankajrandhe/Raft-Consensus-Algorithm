@@ -64,7 +64,8 @@ type Raft struct {
 	LeaderId int
 	CommitCh chan LogEntry
 	MajorityMap map[string]int
-	CmdHistMap map[string]string
+	CmdHistMap map[string]LogEntry
+	ConnectionMap map[string]net.Conn
 	ServersCount int
 }
 
@@ -83,7 +84,8 @@ func NewRaft(config *ClusterConfig, thisServerId int, commitCh chan LogEntry) (*
 
 	var LeaderId = 0 	//we have fixed leader 0th server, since we are not implementing the Leader Elections
 	MajorityMap := make(map[string]int)
-	CmdHistMap := make(map[string]string)
+	CmdHistMap := make(map[string]LogEntry)
+	ConnectionMap := make(map[string]net.Conn)
 	serversCount := 0
 
 	//Count number of Servers in the Cluster
@@ -91,7 +93,7 @@ func NewRaft(config *ClusterConfig, thisServerId int, commitCh chan LogEntry) (*
 	for _, _ = range config.Servers{
 		serversCount = serversCount + 1
 	}
-	raft = Raft{config,thisServerId,LeaderId,commitCh, MajorityMap, CmdHistMap, serversCount}
+	raft = Raft{config,thisServerId,LeaderId,commitCh, MajorityMap, CmdHistMap,ConnectionMap, serversCount}
 	//Each Raft Object will have a Majority Map and a CmdHistMap, to be used only by the leader. Created for all to handle leader changes.
 
 	var err error = nil
@@ -120,7 +122,7 @@ func (raft Raft) Append(data []byte) (LogEntry, error){
 		//Initialize number of ack for the lsn to 0
 		string_lsn := strconv.Itoa(int(log_instance.Lsn()))
 		raft.MajorityMap[string_lsn] = 0
-		raft.CmdHistMap[string_lsn] = string(data)
+		raft.CmdHistMap[string_lsn] = log_instance
 		
 		/*
 		* Write the received log entry - data byte to a file in the local disk 
@@ -165,8 +167,12 @@ func (raft Raft) Append(data []byte) (LogEntry, error){
 			port := server.LogPort
 
 			//now establish the TCP connection and send the data to the follower servers
-			connection, _ := net.Dial("tcp",":"+strconv.Itoa(port))
-			_, _ = connection.Write([]byte(strconv.Itoa(int(log_instance.Lsn()))+" "+string(log_instance.Data())+" false"))
+			connection, err := net.Dial("tcp",":"+strconv.Itoa(port))
+			if err != nil {
+				continue
+			} else {
+			_, _  = connection.Write([]byte(strconv.Itoa(int(log_instance.Lsn()))+" "+string(log_instance.Data())+" false"))
+			}
 		}
 		// Prepare the log entry and return it 
 		return log_instance,nil
