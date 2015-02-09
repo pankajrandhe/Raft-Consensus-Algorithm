@@ -32,6 +32,8 @@ var kvmap = struct {
 //Using WaitGroup, so that the goroutine get time for execution
 var wg sync.WaitGroup
 
+var err error
+
 func main(){
 
 	// Pass the server id as the parameter from command line
@@ -40,7 +42,7 @@ func main(){
 
 	//Read the json file and get the server configurations 
 	var cluster_config raft.ClusterConfig
-	server_configs, err := ioutil.ReadFile("/home/avp/GO/src/github.com/pankajrandhe/cs733/assignment2/servers_json.json")
+	server_configs, err := ioutil.ReadFile("/home/pankaj/go/src/github.com/pankajrandhe/cs733/assignment2/servers_json.json")
 	if err != nil{
 		panic(err)
 	}
@@ -215,17 +217,76 @@ func isACK(data string) (response bool){
 
 func handleClientConnection(connection net.Conn, raft_instance *raft.Raft, key_values map[string]*value_and_metadata) {
 
-	buffer := make([]byte, 512)
-	buffer_temp := make([]byte, 512)
-	var err error
+	
+	
 	var ver int64 = 1
 
 	for {
 
-		var client_command []byte
-		var case_parameter string
+		client_command, case_parameter := getClientCommand(connection)
+		
+
+		// Once the client command is ready call the Append()
+		//var logentry raft.LogStruct
+		//logentry, err := raft_instance.Append(client_command)
+		 _, err := raft_instance.Append(client_command)
+		 	//fmt.Println(logentry)
+		
+		if err!= nil{
+
+			s := err.Error()
+			connection.Write([]byte(s)) 
+			//fmt.Println(err)
+			/* 
+			Error would be genearted in case if the server is not the leader, 
+			redirect to the server in this case by using the error returned
+			*/
+			
+			//connection.Close()	//for now, add redirect code here
+			continue
+		
+		}		
+
+		switch case_parameter {
+
+		case "set":
+			handleSet(string(client_command), connection, ver)
+
+		case "get":
+			handleGet(string(client_command), connection)
+
+		case "getm":
+			handleGetm(string(client_command), connection)
+
+		case "cas":
+			handleCas(string(client_command), connection, ver)
+
+		case "delete":
+			handleDelete(string(client_command), connection)
+
+		default:
+			_, err = connection.Write([]byte("ERRCMDERR \r\n"))
+			handleError(err)
+		}
+
+		if err != nil {
+			handleError(err)
+			return
+		}
+
+	}
+
+	defer wg.Done()
+}
+
+func getClientCommand(connection net.Conn) (client_command []byte, case_parameter string){
+
+	//var client_command []byte
+		//var case_parameter string
 		var length_r, length_temp int
 		var newline_count int = 0
+		buffer := make([]byte, 512)
+		buffer_temp := make([]byte, 512)
 
 		// Read the first packet to decide the course of the action
 		length_r, err = connection.Read(buffer[0:])
@@ -285,58 +346,7 @@ func handleClientConnection(connection net.Conn, raft_instance *raft.Raft, key_v
 				client_command = buffer[0:length_r]
 			}
 		}
-
-		// Once the client command is ready call the Append()
-		//var logentry raft.LogStruct
-		//logentry, err := raft_instance.Append(client_command)
-		 _, err := raft_instance.Append(client_command)
-		 	//fmt.Println(logentry)
-		
-		if err!= nil{
-
-			s := err.Error()
-			connection.Write([]byte(s)) 
-			//fmt.Println(err)
-			/* 
-			Error would be genearted in case if the server is not the leader, 
-			redirect to the server in this case by using the error returned
-			*/
-			
-			//connection.Close()	//for now, add redirect code here
-			continue
-		
-		}		
-
-		switch case_parameter {
-
-		case "set":
-			handleSet(string(client_command), connection, ver)
-
-		case "get":
-			handleGet(string(client_command), connection)
-
-		case "getm":
-			handleGetm(string(client_command), connection)
-
-		case "cas":
-			handleCas(string(client_command), connection, ver)
-
-		case "delete":
-			handleDelete(string(client_command), connection)
-
-		default:
-			_, err = connection.Write([]byte("ERRCMDERR \r\n"))
-			handleError(err)
-		}
-
-		if err != nil {
-			handleError(err)
-			return
-		}
-
-	}
-
-	defer wg.Done()
+		return client_command, case_parameter
 }
 
 func handleSet(client_command string, connection net.Conn, ver int64) {

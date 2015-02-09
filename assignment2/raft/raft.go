@@ -2,19 +2,12 @@ package raft
 
 import(
 	"os"
-	//"fmt"
-	//"errors"
 	"strconv"
 	"net"
-	//"log"
-	//"time"
 	"math/rand"
-	//"bytes"
 )
 
 var raft Raft
-
-type bytearray []byte
 
 type Lsn uint64  //Log sequence number, unique for all time.
 
@@ -26,7 +19,6 @@ type LogEntry interface {
 	Committed() bool
 }
 
-//################Add the logic for unique seq no.
 func (x LogStruct) Lsn() Lsn { 
 
 	return x.Log_lsn
@@ -51,7 +43,6 @@ type SharedLog interface {
 	Append(data []byte) (LogEntry, error)
 }
 
-// --------------------------------------
 // Raft setup
 type ServerConfig struct {
 	Id int // Id of server. Must be unique
