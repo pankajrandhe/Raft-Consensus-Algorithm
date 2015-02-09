@@ -5,7 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"sync"
-	//"fmt"
+	"fmt"
 )
 
 var wg sync.WaitGroup
@@ -21,10 +21,8 @@ func main() {
 		go func(){
 
 			cmd := exec.Command(path, "0")
-			cmd.Stdout = os.Stdout
-		    cmd.Stderr = os.Stderr
-			err := cmd.Run()
-			if err != nil {panic(err)}
+			_ = cmd.Run()
+			//if err != nil {panic(err)}
 			defer wg.Done()
 		}()
 		
@@ -32,41 +30,20 @@ func main() {
 		go func(){
 
 			cmd := exec.Command(path, "1")
-			cmd.Stdout = os.Stdout
-		    cmd.Stderr = os.Stderr
-			err := cmd.Run()
-			if err != nil {panic(err)}
+			_ = cmd.Run()
+			//if err != nil {panic(err)}
 			defer wg.Done()
 		}()
-
 
 		wg.Add(1)
-		
 		go func(){
 			cmd := exec.Command(path, "2")
-			cmd.Stdout = os.Stdout
-		    cmd.Stderr = os.Stderr
-			err := cmd.Run()
-			//fmt.Println("In runner")
-			if err != nil {panic(err)}
+			_ = cmd.Run()
+			//if err != nil {panic(err)}
 			defer wg.Done()
 		}()
-		
-			wg.Add(1)
-		
-		go func(){
-			cmd := exec.Command(path, "3")
-			cmd.Stdout = os.Stdout
-		    cmd.Stderr = os.Stderr
-			err := cmd.Run()
-			//fmt.Println("In runner")
-			if err != nil {panic(err)}
-			defer wg.Done()
-		}()
-		
 		
 	wg.Wait()	
-	//cmd.Wait()
 }
 
 	

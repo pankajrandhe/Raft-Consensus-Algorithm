@@ -1,7 +1,7 @@
 package main
 
 import (
-	"log"
+	//"log"
 	"fmt"
 	"net"
 	"strconv"
@@ -43,7 +43,7 @@ func main(){
 
 	//Read the json file and get the server configurations 
 	var cluster_config raft.ClusterConfig
-	server_configs, err := ioutil.ReadFile("/home/avp/GO/src/github.com/pankajrandhe/cs733/assignment2/servers_json.json")
+	server_configs, err := ioutil.ReadFile("/home/pankaj/go/src/github.com/pankajrandhe/cs733/assignment2/raft_server/servers_json.json")
 	if err != nil{
 		panic(err)
 	}
@@ -113,7 +113,7 @@ func main(){
 
 			wg.Add(1)
 
-			go handleClientConnection(client_connection, raft_instance, kvmap.key_values)
+			 handleClientConnection(client_connection, raft_instance, kvmap.key_values)
 			defer client_connection.Close()
 		}
 		defer wg.Done()
@@ -153,18 +153,12 @@ func handleServerConnection(server_connection net.Conn, raft_instance *raft.Raft
 	}(ch,eCh)
 
 
-	go func() {
 
-		for{
-		var logStruct raft.LogEntry
-		logStruct = <- raft_instance.CommitCh
-		string_lsn := strconv.Itoa(int(logStruct.Lsn()))
-		stateMachine(raft_instance.ConnectionMap[string_lsn], logStruct.Data())
-	}
-
-		}()
 
 	// Keep reading from the channel for the data
+
+	go func() {
+
 	for {
 
 		data = <-ch
@@ -211,11 +205,28 @@ func handleServerConnection(server_connection net.Conn, raft_instance *raft.Raft
                                 _, err3 := Leader_connection.Write([]byte(ack))
                                 handleError(err3)
                 }
-                
+            
 
-			// only possibility is the logentry
-			 
+			// only possibility is the logentry		 
 	}
+	}()
+
+		go func() {
+
+		for{
+		var logStruct raft.LogEntry
+		logStruct = <- raft_instance.CommitCh
+		string_lsn := strconv.Itoa(int(logStruct.Lsn()))
+	
+		if raft_instance.ConnectionMap[string_lsn] != nil {
+			fmt.Println("ConnectionMap["+string_lsn+"] : ")
+			fmt.Print(raft_instance.ConnectionMap[string_lsn])
+			fmt.Print("\n")
+			stateMachine(raft_instance.ConnectionMap[string_lsn], logStruct.Data())
+		}
+	}
+
+		}()
 
 	defer wg.Done()
 }
@@ -247,11 +258,7 @@ func handleClientConnection(connection net.Conn, raft_instance *raft.Raft, key_v
 		//var logentry raft.LogStruct
 		//logentry, err := raft_instance.Append(client_command)
 		 LogEntry, err := raft_instance.Append(client_command)
-		 string_lsn := strconv.Itoa(int(LogEntry.Lsn()))
-		 raft_instance.ConnectionMap[string_lsn] = connection
-		 	//fmt.Println(logentry)
-		
-		if err!= nil{
+		 if err!= nil{
 
 			s := err.Error()
 			connection.Write([]byte(s)) 
@@ -263,19 +270,22 @@ func handleClientConnection(connection net.Conn, raft_instance *raft.Raft, key_v
 			
 			//connection.Close()	//for now, add redirect code here
 			continue
+		}	
+		 string_lsn := strconv.Itoa(int(LogEntry.Lsn()))
+		 if connection != nil {
+		 raft_instance.ConnectionMap[string_lsn] = connection
+		}
+		 	//fmt.Println(logentry)
 		
-		}		
-
-	
+				
 	}
 
 	defer wg.Done()
-
-
-
 }
 
 func stateMachine(connection net.Conn, client_command []byte) {
+
+	fmt.Println("Inside stateMachine")
 
 		case_parameter := strings.Split(string(client_command), " ")[0]
 
@@ -568,7 +578,7 @@ func handleDelete(client_command string, connection net.Conn) {
 
 func handleError(err error) {
 	if err != nil {
-		log.Fatal(err)
+		//log.Fatal(err)
 	}
 }
 
