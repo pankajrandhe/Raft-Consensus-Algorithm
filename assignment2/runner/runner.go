@@ -17,53 +17,51 @@ func main() {
 		log.Fatal("Check your PATH variable")
 	}
 
-		wg.Add(1)
-		go func(){
+	wg.Add(1)
+	go func() {
 
-			cmd := exec.Command(path, "0")
-			cmd.Stdout = os.Stdout
-		    cmd.Stderr = os.Stderr
-			_ = cmd.Run()
+		cmd := exec.Command(path, "0")
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		_ = cmd.Run()
 
-			//if err != nil {panic(err)}
-			defer wg.Done()
-		}()
-		
-		wg.Add(1)
-		go func(){
+		//if err != nil {panic(err)}
+		defer wg.Done()
+	}()
 
-			cmd := exec.Command(path, "1")
-			cmd.Stdout = os.Stdout
-		    cmd.Stderr = os.Stderr
-			_ = cmd.Run()
-			//if err != nil {panic(err)}
-			defer wg.Done()
-		}()
+	wg.Add(1)
+	go func() {
 
-		wg.Add(1)
-		go func(){
-			cmd := exec.Command(path, "2")
-			cmd.Stdout = os.Stdout
-		    cmd.Stderr = os.Stderr
-			_ = cmd.Run()
+		cmd := exec.Command(path, "1")
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		_ = cmd.Run()
+		//if err != nil {panic(err)}
+		defer wg.Done()
+	}()
 
-			//if err != nil {panic(err)}
-			defer wg.Done()
-		}()
+	wg.Add(1)
+	go func() {
+		cmd := exec.Command(path, "2")
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		_ = cmd.Run()
 
-		wg.Add(1)
-		go func(){
+		//if err != nil {panic(err)}
+		defer wg.Done()
+	}()
 
-			cmd := exec.Command(path, "3")
-			cmd.Stdout = os.Stdout
-		    cmd.Stderr = os.Stderr
-			_ = cmd.Run()
+	wg.Add(1)
+	go func() {
 
-			//if err != nil {panic(err)}
-			defer wg.Done()
-		}()
-		
-	wg.Wait()	
+		cmd := exec.Command(path, "3")
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		_ = cmd.Run()
+
+		//if err != nil {panic(err)}
+		defer wg.Done()
+	}()
+
+	wg.Wait()
 }
-
-	

@@ -2,18 +2,18 @@ package main
 
 import (
 	//"log"
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"github.com/pankajrandhe/cs733/assignment2/raft"
+	"io/ioutil"
+	"math/rand"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
-	"os"
-	"io/ioutil"
-	"encoding/json"
-	"github.com/pankajrandhe/cs733/assignment2/raft"
-	"bytes"
-	"math/rand"
 )
 
 // Lets first create the structure which will hold the value and all other meta-data for the key
@@ -35,30 +35,30 @@ var wg sync.WaitGroup
 
 var err error
 
-func main(){
+func main() {
 
 	// Pass the server id as the parameter from command line
 	serverId, err := strconv.Atoi(os.Args[1])
 	handleError(err)
 
-	//Read the json file and get the server configurations 
+	//Read the json file and get the server configurations
 	var cluster_config raft.ClusterConfig
 	server_configs, err := ioutil.ReadFile("/home/pankaj/go/src/github.com/pankajrandhe/cs733/assignment2/raft_server/servers_json.json")
-	if err != nil{
+	if err != nil {
 		panic(err)
 	}
 
 	err_json := json.Unmarshal(server_configs, &cluster_config)
-	if err_json != nil{
+	if err_json != nil {
 		panic(err_json)
-	} 
-	
+	}
+
 	commitCh := make(chan raft.LogEntry)
 
 	//Initialize Raft Object with the cluster configuration, server id and commit channel.
 	var raft_instance *(raft.Raft)
 	raft_instance, err = raft.NewRaft(&cluster_config, serverId, commitCh)
-	
+
 	//create the TCP address to listen to servers
 	server_tcpAddress, err := net.ResolveTCPAddr("tcp", ":"+strconv.Itoa(raft_instance.Cluster.Servers[serverId].LogPort))
 	handleError(err)
@@ -75,12 +75,12 @@ func main(){
 	client_listener, err := net.ListenTCP("tcp", client_tcpAddress)
 	handleError(err)
 
-	fmt.Println("Server "+ strconv.Itoa(serverId) +" listening on ClientPort:"+strconv.Itoa(raft_instance.Cluster.Servers[serverId].ClientPort))
-	fmt.Println("Server "+ strconv.Itoa(serverId) +" listening on LogPort:"+strconv.Itoa(raft_instance.Cluster.Servers[serverId].LogPort))
+	fmt.Println("Server " + strconv.Itoa(serverId) + " listening on ClientPort:" + strconv.Itoa(raft_instance.Cluster.Servers[serverId].ClientPort))
+	fmt.Println("Server " + strconv.Itoa(serverId) + " listening on LogPort:" + strconv.Itoa(raft_instance.Cluster.Servers[serverId].LogPort))
 
 	//keep listening for acks from follower servers if the server the Leader
 	wg.Add(1)
-	go func(){
+	go func() {
 
 		for {
 
@@ -93,15 +93,15 @@ func main(){
 
 			wg.Add(1)
 
-			go handleServerConnection(server_connection,raft_instance ,serverId)
+			go handleServerConnection(server_connection, raft_instance, serverId)
 			defer server_connection.Close()
 		}
-	defer wg.Done()
+		defer wg.Done()
 	}()
 
 	wg.Add(1)
 	//keep listening for the client requests
-	go func (){
+	go func() {
 		for {
 
 			client_connection, err1 := client_listener.Accept()
@@ -113,16 +113,16 @@ func main(){
 
 			wg.Add(1)
 
-			 handleClientConnection(client_connection, raft_instance, kvmap.key_values)
+			handleClientConnection(client_connection, raft_instance, kvmap.key_values)
 			defer client_connection.Close()
 		}
 		defer wg.Done()
 	}()
-	
+
 	wg.Wait()
 }
 
-func handleServerConnection(server_connection net.Conn, raft_instance *raft.Raft, serverId int){
+func handleServerConnection(server_connection net.Conn, raft_instance *raft.Raft, serverId int) {
 
 	//Case1: If the server is the Leader it will listen only for ACKs from the follower servers
 	//Case2: If the server is the follower it will listen for the Log Entries on the connection and reply back with ACK if commits
@@ -150,91 +150,78 @@ func handleServerConnection(server_connection net.Conn, raft_instance *raft.Raft
 		}
 
 		defer wg.Done()
-	}(ch,eCh)
-
-
-
+	}(ch, eCh)
 
 	// Keep reading from the channel for the data
 
 	go func() {
 
-	for {
+		for {
 
-		data = <-ch
-		n := bytes.Index(data, []byte{0})
-		string_data := string(data[:n])
-		//if the server is the leader then only it has to distinguish between the ACK or Log Broadcasted
-		if isACK(string_data) {
+			data = <-ch
+			n := bytes.Index(data, []byte{0})
+			string_data := string(data[:n])
+			//if the server is the leader then only it has to distinguish between the ACK or Log Broadcasted
+			if isACK(string_data) {
 
-			// possibilities are : Logentry OR ACK
-			
-				fmt.Println("Ack Received by Leader. LSN: "+ strings.Fields(string(data))[0])
-				lsn := strings.Split(string_data," ")[0]
+				// possibilities are : Logentry OR ACK
+
+				fmt.Println("Ack Received by Leader. LSN: " + strings.Fields(string(data))[0])
+				lsn := strings.Split(string_data, " ")[0]
 
 				raft_instance.MajorityMap[lsn] = raft_instance.MajorityMap[lsn] + 1
-				
+
 				//Calculate majority using n/2, n is the total number of servers
-				if raft_instance.MajorityMap[lsn] > (raft_instance.ServersCount/2) {
+				if raft_instance.MajorityMap[lsn] > (raft_instance.ServersCount / 2) {
 					fmt.Println("Acks. Received from Majority of Servers")
 					fmt.Println("Command to be exec on State Machine :" + string(raft_instance.CmdHistMap[lsn].Data()))
 					raft_instance.CommitCh <- raft_instance.CmdHistMap[lsn]
-
-
 
 					//Make the ACK Count to 0
 					raft_instance.MajorityMap[lsn] = 0
 				}
 
+			} else {
 
+				fmt.Println("Log Entry Received at Server " + strconv.Itoa(serverId))
 
+				//Send back the ACK (ACK=Lsn) to the leader
+				ack := strings.Split(string_data, " ")[0]
+				fmt.Println(serverId, " Sending Ack:", ack)
+				Leader_port := raft_instance.Cluster.Servers[raft_instance.LeaderId].LogPort
+				Leader_connection, _ := net.Dial("tcp", ":"+strconv.Itoa(Leader_port))
+				_, err3 := Leader_connection.Write([]byte(ack))
+				handleError(err3)
+			}
 
-
-			
-
-		} else {
-
-			fmt.Println("Log Entry Received at Server "+ strconv.Itoa(serverId))
-
-
-                                //Send back the ACK (ACK=Lsn) to the leader
-                                ack := strings.Split(string_data," ")[0]
-                                fmt.Println(serverId," Sending Ack:",ack)
-                                Leader_port := raft_instance.Cluster.Servers[raft_instance.LeaderId].LogPort
-                                Leader_connection, _ := net.Dial("tcp",":"+strconv.Itoa(Leader_port))
-                                _, err3 := Leader_connection.Write([]byte(ack))
-                                handleError(err3)
-                }
-            
-
-			// only possibility is the logentry		 
-	}
+			// only possibility is the logentry
+		}
 	}()
 
-		go func() {
+	go func() {
 
-		for{
-		var logStruct raft.LogEntry
-		logStruct = <- raft_instance.CommitCh
-		string_lsn := strconv.Itoa(int(logStruct.Lsn()))
-	
-		if raft_instance.ConnectionMap[string_lsn] != nil {
-			fmt.Println("ConnectionMap["+string_lsn+"] : ")
-			fmt.Print(raft_instance.ConnectionMap[string_lsn])
-			fmt.Print("\n")
-			stateMachine(raft_instance.ConnectionMap[string_lsn], logStruct.Data())
+		for {
+			var logStruct raft.LogEntry
+			logStruct = <-raft_instance.CommitCh
+			string_lsn := strconv.Itoa(int(logStruct.Lsn()))
+
+			if raft_instance.ConnectionMap[string_lsn] != nil {
+				fmt.Println("ConnectionMap[" + string_lsn + "] : ")
+				fmt.Print(raft_instance.ConnectionMap[string_lsn])
+				fmt.Print("\n")
+				stateMachine(raft_instance.ConnectionMap[string_lsn], logStruct.Data())
+			}
 		}
-	}
 
-		}()
+	}()
 
 	defer wg.Done()
 }
 
-func isACK(data string) (response bool){
+func isACK(data string) (response bool) {
 
 	count := strings.Count(data, " ")
-	if count>1 {
+	if count > 1 {
 		response = false
 	} else {
 		response = true
@@ -242,42 +229,35 @@ func isACK(data string) (response bool){
 	return response
 }
 
-
 func handleClientConnection(connection net.Conn, raft_instance *raft.Raft, key_values map[string]*value_and_metadata) {
-
-	
-	
-	
 
 	for {
 
 		client_command, _ := getClientCommand(connection)
-		
 
 		// Once the client command is ready call the Append()
 		//var logentry raft.LogStruct
 		//logentry, err := raft_instance.Append(client_command)
-		 LogEntry, err := raft_instance.Append(client_command)
-		 if err!= nil{
+		LogEntry, err := raft_instance.Append(client_command)
+		if err != nil {
 
 			s := err.Error()
-			connection.Write([]byte(s)) 
+			connection.Write([]byte(s))
 			//fmt.Println(err)
-			/* 
-			Error would be genearted in case if the server is not the leader, 
-			redirect to the server in this case by using the error returned
+			/*
+				Error would be genearted in case if the server is not the leader,
+				redirect to the server in this case by using the error returned
 			*/
-			
+
 			//connection.Close()	//for now, add redirect code here
 			continue
-		}	
-		 string_lsn := strconv.Itoa(int(LogEntry.Lsn()))
-		 if connection != nil {
-		 raft_instance.ConnectionMap[string_lsn] = connection
 		}
-		 	//fmt.Println(logentry)
-		
-				
+		string_lsn := strconv.Itoa(int(LogEntry.Lsn()))
+		if connection != nil {
+			raft_instance.ConnectionMap[string_lsn] = connection
+		}
+		//fmt.Println(logentry)
+
 	}
 
 	defer wg.Done()
@@ -287,107 +267,107 @@ func stateMachine(connection net.Conn, client_command []byte) {
 
 	fmt.Println("Inside stateMachine")
 
-		case_parameter := strings.Split(string(client_command), " ")[0]
+	case_parameter := strings.Split(string(client_command), " ")[0]
 
-		ver := rand.Int63()
+	ver := rand.Int63()
 
-		switch case_parameter {
+	switch case_parameter {
 
-		case "set":
-			handleSet(string(client_command), connection, ver)
+	case "set":
+		handleSet(string(client_command), connection, ver)
 
-		case "get":
-			handleGet(string(client_command), connection)
+	case "get":
+		handleGet(string(client_command), connection)
 
-		case "getm":
-			handleGetm(string(client_command),connection)
+	case "getm":
+		handleGetm(string(client_command), connection)
 
-		case "cas":
-			handleCas(string(client_command), connection, ver)
+	case "cas":
+		handleCas(string(client_command), connection, ver)
 
-		case "delete":
-			handleDelete(string(client_command), connection)
+	case "delete":
+		handleDelete(string(client_command), connection)
 
-		default:
-			_, err = connection.Write([]byte("ERRCMDERR \r\n"))
-			handleError(err)
-		}
+	default:
+		_, err = connection.Write([]byte("ERRCMDERR \r\n"))
+		handleError(err)
+	}
 
-		if err != nil {
-			handleError(err)
-			return
-		}
+	if err != nil {
+		handleError(err)
+		return
+	}
 
 }
 
-func getClientCommand(connection net.Conn) (client_command []byte, case_parameter string){
+func getClientCommand(connection net.Conn) (client_command []byte, case_parameter string) {
 
 	//var client_command []byte
-		//var case_parameter string
-		var length_r, length_temp int
-		var newline_count int = 0
-		buffer := make([]byte, 512)
-		buffer_temp := make([]byte, 512)
+	//var case_parameter string
+	var length_r, length_temp int
+	var newline_count int = 0
+	buffer := make([]byte, 512)
+	buffer_temp := make([]byte, 512)
 
-		// Read the first packet to decide the course of the action
-		length_r, err = connection.Read(buffer[0:])
-		handleError(err)
+	// Read the first packet to decide the course of the action
+	length_r, err = connection.Read(buffer[0:])
+	handleError(err)
 
-		newline_count = strings.Count(string(buffer[0:length_r]), "\r\n")
+	newline_count = strings.Count(string(buffer[0:length_r]), "\r\n")
 
-		case_parameter = strings.Split(string(buffer[0:length_r]), " ")[0]
+	case_parameter = strings.Split(string(buffer[0:length_r]), " ")[0]
 
-		// check whether if we have got \r\n and command is not set or cas command
-		if strings.Contains(string(buffer[0:length_r]), "\r\n") && !(case_parameter == "set" || case_parameter == "cas") {
+	// check whether if we have got \r\n and command is not set or cas command
+	if strings.Contains(string(buffer[0:length_r]), "\r\n") && !(case_parameter == "set" || case_parameter == "cas") {
 
-			client_command = buffer[0:length_r]
+		client_command = buffer[0:length_r]
 
-		} else if !(strings.Contains(string(buffer[0:length_r]), "\r\n")) && !(case_parameter == "set" || case_parameter == "cas") {
+	} else if !(strings.Contains(string(buffer[0:length_r]), "\r\n")) && !(case_parameter == "set" || case_parameter == "cas") {
 
-			// In this case read the packets until we get the "\r\n"
-			for {
-				length_temp, err = connection.Read(buffer_temp[0:])
-				handleError(err)
+		// In this case read the packets until we get the "\r\n"
+		for {
+			length_temp, err = connection.Read(buffer_temp[0:])
+			handleError(err)
 
-				buffer = append(buffer[0:length_r], buffer_temp[0:length_temp]...)
-				length_r = length_r + length_temp
+			buffer = append(buffer[0:length_r], buffer_temp[0:length_temp]...)
+			length_r = length_r + length_temp
 
-				if strings.Contains(string(buffer), "\r\n") {
-					break
-				} else {
-					continue
-				}
-			}
-			client_command = buffer[0:length_r]
-		} else {
-
-			if newline_count == 2 {
-				client_command = buffer[0:length_r]
-
+			if strings.Contains(string(buffer), "\r\n") {
+				break
 			} else {
-
-				// Otherwise go on reading until we get two "\r\n" characters
-				for {
-
-					if newline_count < 2 {
-						buffer_temp := make([]byte, 1024)
-						length_temp, err = connection.Read(buffer_temp[0:])
-						handleError(err)
-
-						buffer = append(buffer[0:length_r], buffer_temp[0:length_temp]...)
-						length_r = length_r + length_temp
-
-						if strings.Contains(string(buffer), "\r\n") {
-							newline_count++
-						}
-					} else {
-						break
-					}
-				}
-				client_command = buffer[0:length_r]
+				continue
 			}
 		}
-		return client_command, case_parameter
+		client_command = buffer[0:length_r]
+	} else {
+
+		if newline_count == 2 {
+			client_command = buffer[0:length_r]
+
+		} else {
+
+			// Otherwise go on reading until we get two "\r\n" characters
+			for {
+
+				if newline_count < 2 {
+					buffer_temp := make([]byte, 1024)
+					length_temp, err = connection.Read(buffer_temp[0:])
+					handleError(err)
+
+					buffer = append(buffer[0:length_r], buffer_temp[0:length_temp]...)
+					length_r = length_r + length_temp
+
+					if strings.Contains(string(buffer), "\r\n") {
+						newline_count++
+					}
+				} else {
+					break
+				}
+			}
+			client_command = buffer[0:length_r]
+		}
+	}
+	return client_command, case_parameter
 }
 
 func handleSet(client_command string, connection net.Conn, ver int64) {
@@ -428,7 +408,7 @@ func handleSet(client_command string, connection net.Conn, ver int64) {
 		kvmap.RLock()
 		ver := strconv.FormatInt(kvmap.key_values[string(command_split[1])].version, 10)
 		kvmap.RUnlock()
-		_, err = connection.Write([]byte("OK " +ver+ "\r\n")) //buffer[0:length_r])
+		_, err = connection.Write([]byte("OK " + ver + "\r\n")) //buffer[0:length_r])
 		handleError(err)
 	}
 
@@ -600,4 +580,3 @@ func exp_timer(key string, key_values map[string]*value_and_metadata) {
 	// as soon as the timer expires delete the record
 	delete(key_values, key)
 }
-
