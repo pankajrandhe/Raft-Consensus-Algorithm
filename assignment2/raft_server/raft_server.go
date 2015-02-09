@@ -163,12 +163,18 @@ func handleServerConnection(server_connection net.Conn, raft_instance *raft.Raft
 				fmt.Println("Ack Received by Leader. LSN: "+ strings.Fields(string(data))[0])
 				lsn := strings.Split(string_data," ")[0]
 
-					raft_instance.MajorityMap[lsn] = raft_instance.MajorityMap[lsn] + 1
-					//Currently assuming majority to 2
-					if raft_instance.MajorityMap[lsn] >= 2 {
-					fmt.Println("Majority")
+				raft_instance.MajorityMap[lsn] = raft_instance.MajorityMap[lsn] + 1
+				
+				//Calculate majority using n/2, n is the total number of servers
+				if raft_instance.MajorityMap[lsn] > (raft_instance.ServersCount/2) {
+					fmt.Println("Acks. Received from Majority of Servers")
 					fmt.Println("Command to be exec on State Machine :" + raft_instance.CmdHistMap[lsn])
-					}
+					//Make the ACK Count to 0
+					raft_instance.MajorityMap[lsn] = 0
+				}
+
+
+
 
 
 			

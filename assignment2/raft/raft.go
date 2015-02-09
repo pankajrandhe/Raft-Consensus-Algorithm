@@ -74,6 +74,7 @@ type Raft struct {
 	CommitCh chan LogEntry
 	MajorityMap map[string]int
 	CmdHistMap map[string]string
+	ServersCount int
 }
 
 type LogStruct struct {
@@ -92,8 +93,15 @@ func NewRaft(config *ClusterConfig, thisServerId int, commitCh chan LogEntry) (*
 	var LeaderId = 0 	//we have fixed leader 0th server, since we are not implementing the Leader Elections
 	MajorityMap := make(map[string]int)
 	CmdHistMap := make(map[string]string)
-	raft = Raft{config,thisServerId,LeaderId,commitCh, MajorityMap, CmdHistMap}
-	//Each Raft Object will have a Majority Map, to be used only by the leader
+	serversCount := 0
+
+	//Count number of Servers in the Cluster
+
+	for _, _ = range config.Servers{
+		serversCount = serversCount + 1
+	}
+	raft = Raft{config,thisServerId,LeaderId,commitCh, MajorityMap, CmdHistMap, serversCount}
+	//Each Raft Object will have a Majority Map and a CmdHistMap, to be used only by the leader. Created for all to handle leader changes.
 
 	var err error = nil
 	return &raft, err
