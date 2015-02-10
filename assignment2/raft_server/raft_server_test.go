@@ -124,16 +124,6 @@ func setSingleClient(t *testing.T) {
 	if !matched {
 		t.Error(match_err)
 	}
-
-	//testcase#9 GET command (value should get cleared after 2 secs)
-	//sleep for 2 secs
-	time.Sleep(time.Duration(2) * time.Second)
-	sendToServer(connection, "get five\r\n")
-	data = <-ch
-	matched, _ = regexp.MatchString("ERRNOTFOUND\r\n", string(data))
-	if !matched {
-		t.Error(match_err)
-	}
 }
 
 func sendToServer(connection net.Conn, message string) {
