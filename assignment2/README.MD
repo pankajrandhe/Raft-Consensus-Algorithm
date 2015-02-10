@@ -15,6 +15,14 @@ This assignment serves as the basis for the complete implementation of the Raft 
  
 ###Usage###
 
+####Getting The Code###
+
+* Run the following command:
+ 
+ `go get github.com/pankajrandhe/cs733/assignment2/`
+ 
+####Running####
+
 * Run the following commands:
 
   `go build github.com/pankajrandhe/cs733/assignment2/raft/`
@@ -27,7 +35,9 @@ This assignment serves as the basis for the complete implementation of the Raft 
  
   This will start the servers, specified in the servers_json.json file.
   
-* To test run the following:
+####Testing####
+
+ Please ensure that servers are running, by starting `runner` in another terminal before testing.
 
  `go test github.com/pankajrandhe/cs733/assignment2/raft_server/`
  
