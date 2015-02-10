@@ -39,9 +39,9 @@ This assignment serves as the basis for the complete implementation of the Raft 
   
 ####Testing####
 
- Please ensure that servers are running, by starting `runner` in another terminal before testing.
+* Please ensure that servers are running, by starting `runner` in another terminal before testing.
 
- `go test github.com/pankajrandhe/cs733/assignment2/raft_server/`
+  `go test github.com/pankajrandhe/cs733/assignment2/raft_server/`
  
   
 ###KV Store Protocol Specification###
