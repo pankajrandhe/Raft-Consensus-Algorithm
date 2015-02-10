@@ -26,6 +26,8 @@ This assignment serves as the basis for the complete implementation of the Raft 
 * Run the following commands:
 
   `go build github.com/pankajrandhe/cs733/assignment2/raft/`
+  
+  Please ensure that you have updated the path of the servers_json.json file to your `$GOPATH` in `raft_server.go`, before running the next command.
  
   `go install github.com/pankajrandhe/cs733/assignment2/raft_server/`
  
