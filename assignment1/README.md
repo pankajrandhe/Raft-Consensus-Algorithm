@@ -1,4 +1,4 @@
-# cs733
+# Assignment 1 : Key Value Store
 
 **Execution Instructions** 
 ```
