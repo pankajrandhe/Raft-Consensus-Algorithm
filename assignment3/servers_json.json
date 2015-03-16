@@ -1,0 +1,45 @@
+{
+  "Path": "/tmp/log_file.txt",
+  "Servers": [
+    {
+      "Id": 0,
+      "Hostname": "localhost",
+      "ClientPort": 9000,
+      "Term": 0,
+      "LastLogTerm": 0,
+      "LastLogIndex": 0
+    },
+    {
+      "Id": 1,
+      "Hostname": "localhost",
+      "ClientPort": 9001,
+      "Term": 0,
+      "LastLogTerm": 0,
+      "LastLogIndex": 0
+    },
+    {
+      "Id": 2,
+      "Hostname": "localhost",
+      "ClientPort": 9002,
+      "Term": 0,
+      "LastLogTerm": 0,
+      "LastLogIndex": 0
+    },
+    {
+      "Id": 3,
+      "Hostname": "localhost",
+      "ClientPort": 9003,
+      "Term": 0,
+      "LastLogTerm": 0,
+      "LastLogIndex": 0
+    }
+    {
+      "Id": 4,
+      "Hostname": "localhost",
+      "ClientPort": 9004,
+      "Term": 0,
+      "LastLogTerm": 0,
+      "LastLogIndex": 0
+    }
+  ]
+}
