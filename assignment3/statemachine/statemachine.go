@@ -1,55 +1,42 @@
 package main
 
 import (
-    "time"
-    "math/rand"
     "github.com/pankajrandhe/cs733/assignment3/raft"
 )
 
-
-var cluster raft.ClusterConfig
-var servers int = 5
-var serverId int
-var currentTerm int = 0
-const follower = 0
-const candidate = 1
-const leader = 2
-var i int = 0
-var j int = 0
-
-type raft_type raft.Raft
-
+const serverCount int = 5
 
 func main(){ 
 
-    // Configure the servers in the cluster
-    for _,server := range cluster.Servers{
+    var servers = make([]raft.ServerConfig, 5, 5)
+    var cluster = raft.ClusterConfig{servers}
+    var j int = 0
 
-        // Define the sever parameters while boting-up
+    // Configure the 5 servers in the cluster
+    for i:=0; i<serverCount; i++ {
+
+        // Define the sever parameters while booting-up
         id := i
         hostname := "localhost"
         clientPort := 9000
-        voteCh:= make(chan raft.VoteReq)
-        responseCh := make(chan string)
+        eventCh:= make(chan raft.Event)
         term := 0
         lastLogTerm := 0
         lastLogIndex := 0
+        VoteHistory := make([]bool,10)  //Change later on, voteHistrory can't be limited ... (CHECK)
 
-        serverConfig := raft.ServerConfig{id,hostname,clientPort,voteCh,responseCh,term,lastLogTerm,lastLogIndex}
-        cluster.Servers[i] = serverConfig
-        i++
+        serverConfig := raft.ServerConfig{id,hostname,clientPort,eventCh,term,lastLogTerm,lastLogIndex, VoteHistory}
+        servers[i] = serverConfig
         clientPort++
     }
 
     // Spawn five servers as GO routines
-    for _,server := range cluster.Servers{
-
+    for _,_ = range cluster.Servers{
         thisServerId := j
         j++
-        leaderId := -1  // since leader is not elected yet it is invalid value
+        leaderId := -1  // since leader is not elected thus leaderid has invalid value... (CHECK)
         //Initialize the Raft Instance for each server
-        raftInst, err := raft.NewRaft(&cluster, thisServerId, leaderId, servers)    
-        raftInst.loop(thisServerId)
+        raftInst, _ := raft.NewRaft(&cluster, thisServerId, leaderId, serverCount)    
+        raftInst.Loop(thisServerId)
     }
 }
-
