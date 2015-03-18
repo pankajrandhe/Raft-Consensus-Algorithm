@@ -4,9 +4,10 @@ import (
 	"math/rand"
 	//"net"
 	//"os"
-	//"strconv"
+	"strconv"
 	"time"
 	"fmt"
+	"sync"
 )
 
 const follower int = 1
@@ -100,6 +101,7 @@ type Raft struct {
 	//ConnectionMap map[string]net.Conn
 	ServersCount  int
 }
+
 /*
 type LogStruct struct {
 	Log_lsn    Lsn
@@ -209,18 +211,7 @@ func (raft Raft) Append(data []byte) (LogEntry, error) {
 }
 */
 
-// RequestVote RPC
-func (raft Raft) RequestVote(eventCh chan Event,voteAppeal Event) (int, bool){
-
-	// Request the vote on vote channel of the follower
-	eventCh <- voteAppeal
-	ev := <- raft.Cluster.Servers[raft.ThisServerId].EventCh
-	msg := ev.data.(VoteResponse)
-	
-	return msg.Term,msg.Vote 	 
-}
-
-func (raft Raft) Loop(thisServerId int) {
+func (raft Raft) Loop(thisServerId int, w sync.WaitGroup) {
     state := follower; // begin life as a follower
        
     for {
@@ -234,36 +225,40 @@ func (raft Raft) Loop(thisServerId int) {
                 default: return
                 }
     }
+    w.Done()
 }
 
 func (raft Raft) follower(thisServerId int, currentTerm int) int {
 
-    // Alias for follower's own event channel
+	var w sync.WaitGroup
+	fmt.Println("inside follower "+strconv.Itoa(thisServerId))
+    // alias for follower's own event channel
     eventCh := raft.Cluster.Servers[thisServerId].EventCh
-
-    T := 150  // T is 150ms for example
+    T := 15  // T is 150ms for example
     var timer *(time.Timer)
 
+    w.Add(1)
     go func(){
         election_timeout := random(T, 2*T) // This should be the random value between T, 2T
-        timer = time.NewTimer(time.Duration(election_timeout) * time.Millisecond) // to become candidate if no append reqs
-        <- timer.C
+        fmt.Println(election_timeout)
+        timer = time.NewTimer(time.Duration(election_timeout) * time.Second) // to become candidate if no append reqs
+        <-timer.C
         eventCh <- Event{"Timeout",nil}  // Generate the Timeout event on timer expiry
+        fmt.Println("timeout, put on channel")
+		w.Done()	
     }()
 
-    go func() (int){
-        for {
-
+    for {
             ev := <- raft.Cluster.Servers[thisServerId].EventCh
             event := ev.evType
-            //event := <- eventCh
             switch event {
-            /*case ClientAppend:
-                // Do not handle clients in follower mode. Send it back up the
+            case "ClientAppend":
+                /* Do not handle clients in follower mode. Send it back up the
                 // pipe with committed = false
                 ev.logEntry.commited = false
                 commitCh <- ev.logentry**/
             case "VoteRequest":
+            	fmt.Println("voterequest received")
                 msg := ev.data.(VoteReq)	// type assertion
                 sender := raft.Cluster.Servers[msg.CandidateId]
 
@@ -280,9 +275,9 @@ func (raft Raft) follower(thisServerId int, currentTerm int) int {
                     /*remember term, leader id (either in log or in separate file)*/
                 } 
                     
-            /*case AppendRPC:
-                _ = timer.Reset(random(T, 2*T)) //reset timer
-                if msg.term < currentterm, ignore
+            case "AppendRPC":
+                _ = timer.Reset(time.Duration(random(T, 2*T)) * time.Millisecond) //reset timer
+                /*if msg.term < currentterm, ignore
                 reset heartbeat timer
                 upgrade to event.msg.term if necessary
                 if prev entries of my log and event.msg match
@@ -293,55 +288,68 @@ func (raft Raft) follower(thisServerId int, currentTerm int) int {
                    respond err.*/
             case "Timeout" : return candidate  // new state back to loop()
             }
-        }
-    }()
-    return candidate
+    }
 }
 
 func (raft Raft) candidate(thisServerId int) int {
 
-    var votesReceived int = 0
-    temp := make(chan bool)
-
-    candidateId := thisServerId
-    currentTerm := raft.Cluster.Servers[candidateId].Term + 1  // increment the current term
-    lastlogterm := raft.Cluster.Servers[candidateId].LastLogTerm
-    lastlogindex := raft.Cluster.Servers[candidateId].LastLogIndex
-     
-    //Prepare the vote request 
-    voteAppeal := Event{"VoteRequest",VoteReq{candidateId, currentTerm, lastlogterm, lastlogindex}} 
-
-    // Parallerly send the Vote Requests to all the servers 
-    for _, server := range raft.Cluster.Servers {
-        go func() {
-            _, voteGranted := raft.RequestVote(server.EventCh, voteAppeal)  //term to be defined
-            if voteGranted {
-                votesReceived = votesReceived +1 
-            }
-        }()
-    }
-
-    go func() {
-    	for {
-    		isMajority := checkMajority(votesReceived)
-                if isMajority {
-                	temp <- true
-                    break   
-                } else {
-                	continue
-                }
-    	}
-    // return to leader state on getting the majority //(CHECK)
-    }()
+	//var w sync.WaitGroup
+	fmt.Println("inside candidate"+strconv.Itoa(thisServerId))
+    votesReceived := 0
+    eventCh := raft.Cluster.Servers[thisServerId].EventCh
     
-    <-temp
-    return leader 
+    lastlogterm := raft.Cluster.Servers[thisServerId].LastLogTerm
+    lastlogindex := raft.Cluster.Servers[thisServerId].LastLogIndex
+
+    // increment the current term
+    currentTerm := raft.Cluster.Servers[thisServerId].Term + 1  
+    // vote for self
+    votesReceived = votesReceived + 1
+    // reset election timer
+
+     
+    //Prepare the vote request and send RequestVote RPC to all other servers
+    voteAppeal := Event{"VoteRequest",VoteReq{thisServerId, currentTerm, lastlogterm, lastlogindex}}  
+    go func(){
+
+    	for _, server := range raft.Cluster.Servers {
+        //go func() {
+        	if server.Id != thisServerId{
+        		fmt.Println(strconv.Itoa(thisServerId)+" Sending vote request to "+strconv.Itoa(server.Id))
+	            raft.RequestVote(server.Id, voteAppeal)  
+        	}
+        //}()
+	    }
+	}()
+    
+    //Keep listening on event channel for votes OR AppendEntriesRPC from new leader OR election timeout
+    for{
+    	ev := <- eventCh
+    	switch ev.evType{
+    	case "VoteResponse":
+    		msg := ev.data.(VoteResponse)  // type assertion
+    		if msg.Vote{
+    			votesReceived = votesReceived +1 // increment the voteCount
+				if checkMajority(votesReceived){
+				return leader
+				}
+    		} else{
+    			currentTerm = msg.Term
+    			return follower
+    		}
+ 
+    	case "AppendRPC":
+    		// Return to follower state since new leader is elected
+    		return follower
+    	case "Timeout":
+    		// start new election
+    	}
+    }
 }
 
 func (raft Raft) leader(thisServerId int) int {
 
-    fmt.Println("Leader Elected is:") //Just for testing
-    fmt.Println(thisServerId)	//Just for testing
+	fmt.Println("leader is "+strconv.Itoa(thisServerId))	//Just for testing
     // Send regular heartbeats (empty Append RPCs)
     for _, server := range raft.Cluster.Servers{
     	server.EventCh <- Event{"AppendRPC",nil}
@@ -349,14 +357,20 @@ func (raft Raft) leader(thisServerId int) int {
     return leader //check
 }
 
+// RequestVote RPC
+func (raft Raft) RequestVote(serverId int,voteAppeal Event){
+	// Request the vote on vote channel of the follower
+	raft.Cluster.Servers[serverId].EventCh <- voteAppeal
+	/** NOTE: In case of real RPC it will return either term or vote **/	 
+}
+
 // Source: "http://golangcookbook.blogspot.in/2012/11/generate-random-number-in-given-range.html"
 func random(min, max int) int {
-    rand.Seed(time.Now().Unix())
+    //rand.Seed(time.Now().Unix())
     return rand.Intn(max - min) + min
 }
 
 func checkMajority(votesReceived int) bool{
-
 	if votesReceived >= 3{
 		return true
 	} else {
