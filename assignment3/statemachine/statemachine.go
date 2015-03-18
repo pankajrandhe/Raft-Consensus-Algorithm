@@ -41,7 +41,7 @@ func main() {
 		//Initialize the Raft Instance for each server
 		raftInst, _ := raft.NewRaft(&cluster, thisServerId, leaderId, serverCount)
 		w.Add(1)
-		go raftInst.Loop(thisServerId, w)
+		go raftInst.Loop(w)
 	}
 	w.Wait()
 }

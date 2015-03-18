@@ -211,28 +211,27 @@ func (raft Raft) Append(data []byte) (LogEntry, error) {
 }
 */
 
-func (raft Raft) Loop(thisServerId int, w sync.WaitGroup) {
-    state := follower; // begin life as a follower
-       
+func (raft Raft) Loop(w sync.WaitGroup) {
+    state := follower; // begin life as a follower 
     for {
                 switch (state)  {
                 case follower: 
-                    state = raft.follower(thisServerId,0)
+                    state = raft.follower()
                 case candidate: 
-                    state = raft.candidate(thisServerId)
+                    state = raft.candidate()
                 case leader: 
-                    state = raft.leader(thisServerId)
+                    state = raft.leader()
                 default: return
                 }
     }
     w.Done()
 }
 
-func (raft Raft) follower(thisServerId int, currentTerm int) int {
-
+func (raft Raft) follower() int {
+	thisServerId := raft.ThisServerId
+	currentTerm := raft.Cluster.Servers[thisServerId].Term
 	var w sync.WaitGroup
 	fmt.Println("inside follower "+strconv.Itoa(thisServerId))
-    // alias for follower's own event channel
     eventCh := raft.Cluster.Servers[thisServerId].EventCh
     T := 15  // T is 150ms for example
     var timer *(time.Timer)
@@ -244,7 +243,7 @@ func (raft Raft) follower(thisServerId int, currentTerm int) int {
         timer = time.NewTimer(time.Duration(election_timeout) * time.Second) // to become candidate if no append reqs
         <-timer.C
         eventCh <- Event{"Timeout",nil}  // Generate the Timeout event on timer expiry
-        fmt.Println("timeout, put on channel")
+        fmt.Println("follower"+strconv.Itoa(thisServerId)+"timeout, put on channel")
 		w.Done()	
     }()
 
@@ -291,8 +290,9 @@ func (raft Raft) follower(thisServerId int, currentTerm int) int {
     }
 }
 
-func (raft Raft) candidate(thisServerId int) int {
+func (raft Raft) candidate() int {
 
+	thisServerId := raft.ThisServerId
 	//var w sync.WaitGroup
 	fmt.Println("inside candidate"+strconv.Itoa(thisServerId))
     votesReceived := 0
@@ -347,8 +347,8 @@ func (raft Raft) candidate(thisServerId int) int {
     }
 }
 
-func (raft Raft) leader(thisServerId int) int {
-
+func (raft Raft) leader() int {
+	thisServerId := raft.ThisServerId
 	fmt.Println("leader is "+strconv.Itoa(thisServerId))	//Just for testing
     // Send regular heartbeats (empty Append RPCs)
     for _, server := range raft.Cluster.Servers{
