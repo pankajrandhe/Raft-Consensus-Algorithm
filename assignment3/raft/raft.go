@@ -205,8 +205,8 @@ func (raft Raft) follower() int {
 			    }  
             case "AppendRPC":
             	resetCh <- true //reset timer
-            	message := ev.data.(Entry)
-            	if message.Msg == ""{
+            	msg := ev.data.(Entry)
+            	if msg.Msg == ""{
             		fmt.Println(strconv.Itoa(thisServerId)+":state=F event=HB_recd") 
             	} else{
             		fmt.Println(strconv.Itoa(thisServerId)+"AppendEntriesRPC received")	
@@ -379,7 +379,7 @@ func random(min, max int) int {
 }
 
 func checkMajority(votesReceived int) bool{
-	if votesReceived == 5{		//temporary	(CHECK)
+	if votesReceived > 2{
 		return true
 	} else {
 		return false
