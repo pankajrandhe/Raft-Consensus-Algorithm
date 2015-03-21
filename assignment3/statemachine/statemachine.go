@@ -47,7 +47,7 @@ func main() {
 	time.Sleep(1*time.Second) //Wait for servers to boot-up
 
 	go func(){
-		// Send the client command
+	// Send the client command
 		raft.Send(serverMap[4].ThisServerId,"set xyz 10 0 10\r\n")
 	}()
 	w.Wait()

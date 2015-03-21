@@ -22,7 +22,8 @@ var raft Raft
 type ErrRedirect int // See Log.Append. Implements Error interface.
 
 type LogStruct struct {
-	Log_lsn    int
+	Log_lsn int
+	Log_term int
 	Log_data   string
 	Log_commit bool
 }
@@ -50,7 +51,7 @@ type Entry struct{
 	LeaderId int
 	PrevLogIndex int //Lsn
 	PrevLogTerm int
-	Log LogStruct
+	Msg string
 }
 
 func (x LogStruct) Lsn() int {
@@ -106,10 +107,6 @@ type SharedLog interface {
 	// and returns without waiting for the result.
 	//Append(data []byte) (LogEntry, error)
 	RequestVote(VoteChan chan VoteReq,ResponseChan chan string,voteAppeal VoteReq) (int, bool)
-	Loop(thisServerId int)
-	follower(thisServerId int, currentTerm int) int
-	candidate(thisServerId int, currentTerm int) int
-	leader(thisServerId int, currentTerm int) int
 }
 
 type LogEntry interface {
@@ -208,8 +205,8 @@ func (raft Raft) follower() int {
 			    }  
             case "AppendRPC":
             	resetCh <- true //reset timer
-            	msg := ev.data.(Entry)
-            	if msg.Log.Lsn() < 0{
+            	message := ev.data.(Entry)
+            	if message.Msg == ""{
             		fmt.Println(strconv.Itoa(thisServerId)+":state=F event=HB_recd") 
             	} else{
             		fmt.Println(strconv.Itoa(thisServerId)+"AppendEntriesRPC received")	
@@ -317,17 +314,17 @@ func (raft Raft) leader() int {
 	fmt.Println(strconv.Itoa(raft.ThisServerId)+": state:L event:leader elected")
 	prevLogIndex := 0
     prevLogTerm := 0
-    HB := LogStruct{-1,"",false}
 	// Initialize the nextIndex[], matchIndex[]
 	//nextIndex := make([]int,5,5) //contains next log entry to be sent to each server
 	//matchIndex := make([]int,5,5) // contains index of highest log entry known to be replicated for each server
+    HB := Event{"AppendRPC",Entry{raft.Cluster.Servers[raft.ThisServerId].Term,raft.ThisServerId,prevLogIndex,prevLogTerm,""}}
 
 	w.Add(1)
 	go func(){
 		for {
 			for _, server := range raft.Cluster.Servers {
 				if server.Id != raft.ThisServerId{
-					server.EventCh <- Event{"AppendRPC",Entry{raft.Cluster.Servers[raft.ThisServerId].Term,raft.ThisServerId,prevLogIndex,prevLogTerm,HB}}
+					server.EventCh <- HB
 					fmt.Println("Sent HB to "+strconv.Itoa(server.Id))
 	        	}
 			}
@@ -342,21 +339,9 @@ func (raft Raft) leader() int {
         event := ev.evType
     	switch event{
     	case "ClientAppend":
-    		fmt.Println("Leader got:"+ev.data.(string))
-    		// Prepare the log entry
-    		logentry := LogStruct{raft.Cluster.Servers[raft.ThisServerId].Term,ev.data.(string),false}
-    		// Prepare the Entry to replicate
-    		entry := Event{"AppendRPC",Entry{raft.Cluster.Servers[raft.ThisServerId].Term,raft.ThisServerId,prevLogIndex,prevLogTerm,logentry}}
-    		w.Add(1)  
-		    go func(){
-		    	defer w.Done()
-		    	for _, server := range raft.Cluster.Servers {
-		        	if server.Id != raft.ThisServerId{
-		        			raft.AppendEntries(server.Id, entry)
-		        			fmt.Println(strconv.Itoa(raft.ThisServerId)+" Sending AppendEntries to "+strconv.Itoa(server.Id))      		
-		        	}
-			    }
-			}()
+    		msg := ev.data.(string)
+    		fmt.Println("Leader got:"+ msg)
+    		raft.AppendEntries(msg)
     	}
     }
 
@@ -371,8 +356,20 @@ func (raft Raft) RequestVote(serverId int,voteAppeal Event){
 	/** NOTE: In case of real RPC it will return either term or vote **/	 
 }
 
-func (raft Raft) AppendEntries(serverId int,entry Event){
-	raft.Cluster.Servers[serverId].EventCh <- entry
+func (raft Raft) AppendEntries(msg string){
+	leader := raft.Cluster.Servers[raft.ThisServerId]
+	prevLogIndex := leader.LastLogIndex
+	prevLogTerm := leader.LastLogTerm
+	// Prepare the log entry 
+	logentry := LogStruct{prevLogIndex+1,prevLogTerm+1,msg,false}
+	// Put the entry in leader's log
+	leader.Log[logentry.Lsn()] = logentry
+	// Attach other metadata with log data and replicate to other servers
+	entry := Event{"AppendRPC",Entry{raft.Cluster.Servers[raft.ThisServerId].Term,raft.ThisServerId,prevLogIndex,prevLogTerm,msg}}
+	for _, server := range raft.Cluster.Servers {
+		server.EventCh <- entry
+		fmt.Println("logentry sent to: "+strconv.Itoa(server.Id))
+	}	
 }
 
 // Source: "http://golangcookbook.blogspot.in/2012/11/generate-random-number-in-given-range.html"
