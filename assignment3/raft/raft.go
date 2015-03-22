@@ -250,7 +250,6 @@ func (raft Raft) follower() int {
 			  upgrade to event.msg.term if necessary*/
 		case "CommitMsg":
 			//msg := ev.data.(CommitMsg)
-			fmt.Println("commitMSG receiveddddddddddddddddddddddddddddddddd")
 			//raft.Cluster.Servers[raft.ThisServerId].Log[msg.Index].Log_commit = true
 		case "Timeout":
 			stopCh <- true
