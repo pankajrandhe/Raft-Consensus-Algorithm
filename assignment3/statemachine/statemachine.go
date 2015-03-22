@@ -3,15 +3,14 @@ package main
 import (
 	"github.com/pankajrandhe/cs733/assignment3/raft"
 	"sync"
-	"time"
-	"fmt"
 )
 
 const serverCount int = 5
+var serverMap map[int]*raft.Raft
 
 func main() {
 
-	serverMap := make(map[int]*raft.Raft)
+	serverMap = make(map[int]*raft.Raft)
 	var servers = make([]raft.ServerConfig, 5, 5)
 	var cluster = raft.ClusterConfig{servers}
 	w := &sync.WaitGroup{}
@@ -28,9 +27,9 @@ func main() {
 		VoteHistory := make([]bool, 10) //Change later on, voteHistrory can't be limited ... (CHECK)
 		commitIndex := 0
 		lastApplied := 0
-		log := make(map[int] raft.LogStruct)
+		log := make(map[int]*raft.LogStruct)
 
-		serverConfig := raft.ServerConfig{id,eventCh, commitCh, term, lastLogTerm, lastLogIndex, VoteHistory, commitIndex, lastApplied,log}
+		serverConfig := raft.ServerConfig{id, eventCh, commitCh, term, lastLogTerm, lastLogIndex, VoteHistory, commitIndex, lastApplied, log}
 		servers[i] = serverConfig
 	}
 	// Spawn five servers as GO routines
@@ -43,19 +42,5 @@ func main() {
 		w.Add(1)
 		go raftInst.Loop(w)
 	}
-
-	time.Sleep(1*time.Second) //Wait for servers to boot-up
-
-	go func(){
-		// Send the client command
-		raft.Send(serverMap[4].ThisServerId,"set abc 10 0 10")
-		//raft.Send(serverMap[4].ThisServerId,"set xyz 10 0 10\r\n")
-	}()
-	go func(){
-		// Receive the log entry from commitCh
-		msg := raft.Receive(serverMap[4].ThisServerId)
-		fmt.Print("got from commitCh: ")
-		fmt.Println(msg)
-	}()
 	w.Wait()
 }
