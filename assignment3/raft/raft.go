@@ -54,6 +54,13 @@ type Entry struct{
 	Msg string
 }
 
+type AppendResponse struct{
+	Term int
+	Index int //Lsn
+	ServerId int 
+	Success bool
+}
+
 func (x LogStruct) Lsn() int {
 	return x.Log_lsn
 }
@@ -168,7 +175,7 @@ func (raft Raft) follower() int {
         			fmt.Println("follower "+strconv.Itoa(thisServerId)+" timeout")
         			//return
 		        case <- resetCh:
-		            _ = timer.Reset(time.Duration(random(T, 2*T)) * time.Second)
+		            _ = timer.Reset(time.Duration(random(T, 2*T)) * time.Millisecond)
 		            //return
 		        case <- stopCh:
 		            _ = timer.Stop()
@@ -209,17 +216,28 @@ func (raft Raft) follower() int {
             	if msg.Msg == ""{
             		fmt.Println(strconv.Itoa(thisServerId)+":state=F event=HB_recd") 
             	} else{
-            		fmt.Println(strconv.Itoa(thisServerId)+"AppendEntriesRPC received")	
+            		f := raft.Cluster.Servers[raft.ThisServerId]
+            		fmt.Println(strconv.Itoa(thisServerId)+"AppendEntriesRPC received")
+            		//prev entries of my log and event.msg  should match
+            		if f.LastLogIndex == 0 ||(f.LastLogIndex==msg.PrevLogIndex && f.Log[f.LastLogIndex].Log_data==msg.Msg) {
+						//Prepare the logentry and insert it into map
+						f.Log[f.LastLogIndex+1] = LogStruct{f.LastLogIndex+1,msg.Term,msg.Msg,false}	            		
+	            		f.LastLogIndex = msg.PrevLogIndex + 1
+		                //add to disk log
+		               	//flush disk log
+		               	//respond ok to event.msg.serverid
+		               	ok := Event{"AppendResponse",AppendResponse{f.Term,f.LastLogIndex,f.Id,true}}
+		               	raft.Cluster.Servers[msg.LeaderId].EventCh <- ok
+	                }else {
+	                    //respond err
+	                    err := Event{"AppendResponse",AppendResponse{f.Term,f.LastLogIndex,f.Id,false}}
+	                    raft.Cluster.Servers[msg.LeaderId].EventCh <- err
+	              	}       
             	}
                 /*if msg.Term < raft.Cluster.Servers[raft.ThisServerId].Term//, ignore
                 reset heartbeat timer
-                upgrade to event.msg.term if necessary
-                if prev entries of my log and event.msg match
-                   add to disk log
-                   flush disk log
-                   respond ok to event.msg.serverid
-                else
-                   respond err.*/
+                upgrade to event.msg.term if necessary*/
+                
             case "Timeout" : 
             	stopCh <- true
             	return candidate  // new state back to loop()
@@ -270,7 +288,7 @@ func (raft Raft) candidate() int {
         			fmt.Println("candidate "+strconv.Itoa(thisServerId)+" timeout")
         			//return
 		        case <- resetCh:
-		            _ = timer.Reset(time.Duration(random(T, 2*T)) * time.Second)
+		            _ = timer.Reset(time.Duration(random(T, 2*T)) * time.Millisecond)
 		            //return
 		        case <- stopCh:
 		            _ = timer.Stop()
@@ -311,9 +329,10 @@ func (raft Raft) candidate() int {
 
 func (raft Raft) leader() int {
 	var w sync.WaitGroup
+	responseCount := make(map[int]int)
 	fmt.Println(strconv.Itoa(raft.ThisServerId)+": state:L event:leader elected")
-	prevLogIndex := 0
-    prevLogTerm := 0
+	prevLogIndex := raft.Cluster.Servers[raft.ThisServerId].LastLogIndex
+    prevLogTerm := raft.Cluster.Servers[raft.ThisServerId].LastLogTerm
 	// Initialize the nextIndex[], matchIndex[]
 	//nextIndex := make([]int,5,5) //contains next log entry to be sent to each server
 	//matchIndex := make([]int,5,5) // contains index of highest log entry known to be replicated for each server
@@ -321,6 +340,7 @@ func (raft Raft) leader() int {
 
 	w.Add(1)
 	go func(){
+		defer w.Done()
 		for {
 			for _, server := range raft.Cluster.Servers {
 				if server.Id != raft.ThisServerId{
@@ -330,7 +350,6 @@ func (raft Raft) leader() int {
 			}
 			time.Sleep(100*time.Millisecond)   //Sending HB every 100ms
 		}
-		w.Done()
 	}()
 
 	//Keep listening on event channel client requests
@@ -341,10 +360,32 @@ func (raft Raft) leader() int {
     	case "ClientAppend":
     		msg := ev.data.(string)
     		fmt.Println("Leader got:"+ msg)
-    		raft.AppendEntries(msg)
+    		logentry := raft.AppendEntries(msg)
+    		// Put the response in response count
+    		responseCount[logentry.Lsn()] = 1 //Since the leader has put the entry successfully in its log
+    	case "AppendResponse":
+    		// Check the append response and commit the leader's log entry on success
+       		fmt.Println("AppendResponse received")
+       		msg := ev.data.(AppendResponse)
+       		fmt.Println(msg)
+       		if msg.Success{
+       			responseCount[msg.Index] = responseCount[msg.Index] + 1
+       			if checkMajority(responseCount[msg.Index]){
+       				// if got majority commit the logentry at server
+       				//raft.Cluster.Servers[raft.ThisServerId].Log[msg.Index].Log_commit = true
+       				// Put the entry on Leader's commitCh
+       				leader := raft.Cluster.Servers[raft.ThisServerId]
+       				entry := leader.Log[msg.Index]
+       				leader.CommitCh <- entry 	
+					//fmt.Println("Put Onto commitCh")
+					//<- raft.Cluster.Servers[raft.ThisServerId].CommitCh
+       				// Increment the CommitIndex
+       				// Also increment the lastApplied after putting entry on commitCh
+       				// Also communicate with followers to commit this logentry
+       			}
+       		} 
     	}
     }
-
 	w.Wait()
 	return leader
 }
@@ -356,7 +397,7 @@ func (raft Raft) RequestVote(serverId int,voteAppeal Event){
 	/** NOTE: In case of real RPC it will return either term or vote **/	 
 }
 
-func (raft Raft) AppendEntries(msg string){
+func (raft Raft) AppendEntries(msg string) (LogStruct){
 	leader := raft.Cluster.Servers[raft.ThisServerId]
 	prevLogIndex := leader.LastLogIndex
 	prevLogTerm := leader.LastLogTerm
@@ -367,9 +408,12 @@ func (raft Raft) AppendEntries(msg string){
 	// Attach other metadata with log data and replicate to other servers
 	entry := Event{"AppendRPC",Entry{raft.Cluster.Servers[raft.ThisServerId].Term,raft.ThisServerId,prevLogIndex,prevLogTerm,msg}}
 	for _, server := range raft.Cluster.Servers {
-		server.EventCh <- entry
-		fmt.Println("logentry sent to: "+strconv.Itoa(server.Id))
+		if server.Id != leader.Id{
+			server.EventCh <- entry
+			fmt.Println("logentry sent to: "+strconv.Itoa(server.Id))
+		}
 	}	
+	return logentry
 }
 
 // Source: "http://golangcookbook.blogspot.in/2012/11/generate-random-number-in-given-range.html"
@@ -378,8 +422,8 @@ func random(min, max int) int {
     return rand.Intn(max - min) + min
 }
 
-func checkMajority(votesReceived int) bool{
-	if votesReceived > 2{
+func checkMajority(responses int) bool{
+	if responses > 2 {
 		return true
 	} else {
 		return false
