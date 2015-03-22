@@ -370,15 +370,13 @@ func (raft Raft) leader() int {
        		fmt.Println(msg)
        		if msg.Success{
        			responseCount[msg.Index] = responseCount[msg.Index] + 1
-       			if checkMajority(responseCount[msg.Index]){
+       			if checkMajority(responseCount[msg.Index]) && responseCount[msg.Index]==3{
        				// if got majority commit the logentry at server
        				//raft.Cluster.Servers[raft.ThisServerId].Log[msg.Index].Log_commit = true
        				// Put the entry on Leader's commitCh
        				leader := raft.Cluster.Servers[raft.ThisServerId]
-       				entry := leader.Log[msg.Index]
-       				leader.CommitCh <- entry 	
-					//fmt.Println("Put Onto commitCh")
-					//<- raft.Cluster.Servers[raft.ThisServerId].CommitCh
+       				logentry := leader.Log[msg.Index]
+       				leader.CommitCh <- logentry 	
        				// Increment the CommitIndex
        				// Also increment the lastApplied after putting entry on commitCh
        				// Also communicate with followers to commit this logentry
@@ -471,8 +469,8 @@ func Send(serverId int, msg string){
 	raft.Cluster.Servers[serverId].EventCh <- Event{"ClientAppend",msg}
 }
 
-/*
-func Recieve() LogStruct{
-	response := <- commitCh
+
+func Receive(serverId int) (LogStruct){
+	response := <- raft.Cluster.Servers[serverId].CommitCh
 	return response
-} */
+} 

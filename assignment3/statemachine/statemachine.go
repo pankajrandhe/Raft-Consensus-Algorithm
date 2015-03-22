@@ -4,7 +4,7 @@ import (
 	"github.com/pankajrandhe/cs733/assignment3/raft"
 	"sync"
 	"time"
-	//"fmt"
+	"fmt"
 )
 
 const serverCount int = 5
@@ -50,6 +50,12 @@ func main() {
 		// Send the client command
 		raft.Send(serverMap[4].ThisServerId,"set abc 10 0 10")
 		//raft.Send(serverMap[4].ThisServerId,"set xyz 10 0 10\r\n")
+	}()
+	go func(){
+		// Receive the log entry from commitCh
+		msg := raft.Receive(serverMap[4].ThisServerId)
+		fmt.Print("got from commitCh: ")
+		fmt.Println(msg)
 	}()
 	w.Wait()
 }
