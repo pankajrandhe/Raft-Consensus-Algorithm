@@ -6,13 +6,14 @@ import (
 )
 
 const serverCount int = 5
+
 var serverMap map[int]*raft.Raft
 
 func main() {
 
 	serverMap = make(map[int]*raft.Raft)
 	var servers = make([]raft.ServerConfig, 5, 5)
-	var cluster = raft.ClusterConfig{servers}
+	var cluster = raft.ClusterConfig{"/tmp/log_file", servers}
 	w := &sync.WaitGroup{}
 
 	// Configure the 5 servers in the cluster
