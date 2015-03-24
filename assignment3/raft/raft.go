@@ -1,10 +1,12 @@
 package raft
 
 import (
+	"fmt"
 	"math/rand"
+	"os"
+	"strconv"
 	"sync"
 	"time"
-	//"os"
 )
 
 const (
@@ -14,7 +16,9 @@ const (
 )
 
 var T int = 150 // Timeout between T and 2T
+var threshold = 3 // Threshold value for majority
 var raft Raft
+var RaftMap map[int]*Raft
 
 //type Lsn uint64 //Log sequence number, unique for all time.
 
@@ -51,6 +55,7 @@ type Entry struct {
 	PrevLogIndex int //Lsn
 	PrevLogTerm  int
 	Msg          string
+	CommitIndex int
 }
 
 type AppendResponse struct {
@@ -60,9 +65,9 @@ type AppendResponse struct {
 	Success  bool
 }
 
-type CommitMsg struct {
+type CommitResponse struct {
 	Index    int
-	LeaderId int
+	Committed bool
 }
 
 func (x LogStruct) Lsn() int {
@@ -226,17 +231,24 @@ func (raft Raft) follower() int {
 				raft.LeaderId = msg.LeaderId
 			} else {
 				f := raft.Cluster.Servers[raft.ThisServerId]
-				//fmt.Println(strconv.Itoa(thisServerId) + "AppendEntriesRPC received")
+				fmt.Println(strconv.Itoa(thisServerId) + "AppendEntriesRPC received")
 				//prev entries of my log and event.msg  should match
-				if f.LastLogIndex == 0 || (f.LastLogIndex == msg.PrevLogIndex && f.Log[f.LastLogIndex].Log_data == msg.Msg) {
+				if f.LastLogIndex == 0 || (f.LastLogIndex == msg.PrevLogIndex && f.LastLogTerm==msg.PrevLogTerm){
 					//Prepare the logentry and insert it into map
-					f.Log[f.LastLogIndex+1] = &LogStruct{f.LastLogIndex + 1, msg.Term, msg.Msg, false}
-					f.LastLogIndex = msg.PrevLogIndex + 1
+					logentry := LogStruct{f.LastLogIndex + 1, msg.Term, msg.Msg, false}
+					raft.Cluster.Servers[raft.ThisServerId].Log[f.LastLogIndex+1] = &logentry
+					raft.Cluster.Servers[raft.ThisServerId].LastLogIndex = raft.Cluster.Servers[raft.ThisServerId].LastLogIndex + 1
 					//add to disk log
+					filename := (raft.Cluster).Path
+					err := writeToFile(filename, logentry)
 					//flush disk log
 					//respond ok to event.msg.serverid
-					ok := Event{"AppendResponse", AppendResponse{f.Term, f.LastLogIndex, f.Id, true}}
-					raft.Cluster.Servers[msg.LeaderId].EventCh <- ok
+					ok := Event{"AppendResponse", AppendResponse{raft.Cluster.Servers[raft.ThisServerId].LastLogTerm, 
+													raft.Cluster.Servers[raft.ThisServerId].LastLogIndex, 
+													raft.ThisServerId, 
+													true}}
+					if err == nil{raft.Cluster.Servers[msg.LeaderId].EventCh <- ok}
+					fmt.Println(strconv.Itoa(f.Id)+": AppendResponse sent to"+strconv.Itoa(raft.LeaderId))
 				} else {
 					//respond err
 					err := Event{"AppendResponse", AppendResponse{f.Term, f.LastLogIndex, f.Id, false}}
@@ -246,9 +258,9 @@ func (raft Raft) follower() int {
 			/*if msg.Term < raft.Cluster.Servers[raft.ThisServerId].Term//, ignore
 			  reset heartbeat timer
 			  upgrade to event.msg.term if necessary*/
-		case "CommitMsg":
-			//msg := ev.data.(CommitMsg)
-			//raft.Cluster.Servers[raft.ThisServerId].Log[msg.Index].Log_commit = true
+		case "CommitResponse":
+			msg := ev.data.(CommitResponse)
+			raft.Cluster.Servers[raft.ThisServerId].Log[msg.Index].Log_commit = true
 		case "Timeout":
 			stopCh <- true
 			return candidate // new state back to loop()
@@ -316,7 +328,7 @@ func (raft Raft) candidate() int {
 		case "VoteResponse":
 			msg := ev.data.(VoteResponse) // type assertion
 			if msg.Vote {
-				//fmt.Println(strconv.Itoa(raft.ThisServerId) + "vote recd")
+				fmt.Println(strconv.Itoa(raft.ThisServerId) + "vote recd")
 				votesReceived = votesReceived + 1 // increment the voteCount
 				if checkMajority(votesReceived) {
 					return leader
@@ -331,7 +343,7 @@ func (raft Raft) candidate() int {
 			return follower
 		case "Timeout":
 			// start new election
-			//fmt.Println(strconv.Itoa(thisServerId) + ": state=C event=Timeout")
+			fmt.Println(strconv.Itoa(thisServerId) + ": state=C event=Timeout")
 			return candidate
 		}
 	}
@@ -340,13 +352,15 @@ func (raft Raft) candidate() int {
 func (raft Raft) leader() int {
 	var w sync.WaitGroup
 	responseCount := make(map[int]int)
+	CommitIndex := 0
 	//fmt.Println(strconv.Itoa(raft.ThisServerId) + ": state:L event:leader elected")
 	prevLogIndex := raft.Cluster.Servers[raft.ThisServerId].LastLogIndex
 	prevLogTerm := raft.Cluster.Servers[raft.ThisServerId].LastLogTerm
-	// Initialize the nextIndex[], matchIndex[]
-	//nextIndex := make([]int,5,5) //contains next log entry to be sent to each server
-	//matchIndex := make([]int,5,5) // contains index of highest log entry known to be replicated for each server
-	HB := Event{"AppendRPC", Entry{raft.Cluster.Servers[raft.ThisServerId].Term, raft.ThisServerId, prevLogIndex, prevLogTerm, ""}}
+	// nextIndex contains next log entry to be sent to each server
+	//nextIndex := []int{prevLogIndex+1,prevLogIndex+1,prevLogIndex+1,prevLogIndex+1,prevLogIndex+1} 
+	//matchIndex contains index of highest log entry known to be replicated for each server
+	//matchIndex := []int{0,0,0,0,0} 
+	HB := Event{"AppendRPC", Entry{raft.Cluster.Servers[raft.ThisServerId].Term,raft.ThisServerId,prevLogIndex,prevLogTerm,"",CommitIndex}}
 	w.Add(1)
 	go func() {
 		defer w.Done()
@@ -368,31 +382,37 @@ func (raft Raft) leader() int {
 		switch event {
 		case "ClientAppend":
 			msg := ev.data.(string)
-			//fmt.Println("Leader got:" + msg)
-			//logentry, err := raft.Append(msg)
-			logentry := raft.AppendEntries(msg)
-			// Put the response in response count
-			responseCount[logentry.Lsn()] = 1 //Since the leader has put the entry successfully in its log
+			fmt.Println("Leader got:" + msg)
+			prevLogIndex := raft.Cluster.Servers[raft.ThisServerId].LastLogIndex
+			prevLogTerm := raft.Cluster.Servers[raft.ThisServerId].LastLogTerm
+			leader := raft.Cluster.Servers[raft.ThisServerId]
+			logentry,err := raft.Append(msg)
+			//raft.Cluster.Servers[raft.ThisServerId].LastLogIndex = raft.Cluster.Servers[raft.ThisServerId].LastLogIndex+1
+			if err==nil{responseCount[logentry.Lsn()] = 1} //Since the leader has put the entry successfully in its log
+			// Send the AppendEntries Request to other servers
+			for _, server := range raft.Cluster.Servers {
+				if server.Id != leader.Id {
+					fmt.Println("sending AppendEntriesRPC")
+					raft.AppendEntries(server.Id,leader.Term,leader.Id,prevLogIndex,prevLogTerm,msg,CommitIndex)
+				}
+			}		
 		case "AppendResponse":
 			// Check the append response and commit the leader's log entry on success
-			//fmt.Println("AppendResponse received")
 			msg := ev.data.(AppendResponse)
-			//fmt.Println(msg)
 			if msg.Success {
 				responseCount[msg.Index] = responseCount[msg.Index] + 1
 				if checkMajority(responseCount[msg.Index]) && responseCount[msg.Index] == 3 {
-					// if got majority commit the logentry at server
+					// if got majority commit the logentry at leader
 					raft.Cluster.Servers[raft.ThisServerId].Log[msg.Index].Log_commit = true
-					// Put the entry on Leader's commitCh
-					leader := raft.Cluster.Servers[raft.ThisServerId]
-					logentry := leader.Log[msg.Index]
-					leader.CommitCh <- *logentry
-					// Increment the CommitIndex
-					// Also increment the lastApplied after putting entry on commitCh
-					// Also communicate with followers to commit this logentry
-					/*for _, server := range raft.Cluster.Servers {
-						if server.Id != raft.ThisServerId{
-							server.EventCh <- Event{"CommiMsg",CommitMsg{msg.Index,raft.ThisServerId}}
+					// Task: Put the entry on Leader's commitCh
+					// Task: Increment the CommitIndex
+					// Task: Increment the lastApplied after putting entry on commitCh
+					// Task: Communicate with followers to commit this logentry
+					/*for _, server := range raft.Cluster.Servers{
+						if server.Id!=raft.LeaderId{
+							server.EventCh <- Event{"CommitResponse",CommitResponse{msg.Index,true}}
+							fmt.Print("Sent CommitResponse to: ")
+							fmt.Println(server.Id)
 						}
 					}*/
 				}
@@ -410,24 +430,36 @@ func (raft Raft) RequestVote(serverId int, voteAppeal Event) {
 	/** NOTE: In case of real RPC it will return either term or vote **/
 }
 
-func (raft Raft) AppendEntries(msg string) LogStruct {
-	leader := raft.Cluster.Servers[raft.ThisServerId]
-	prevLogIndex := leader.LastLogIndex
-	prevLogTerm := leader.LastLogTerm
-	// Prepare the log entry
-	//fmt.Println(prevLogIndex)
-	logentry := LogStruct{prevLogIndex + 1, prevLogTerm + 1, msg, false}
-	// Put the entry in leader's log and update the leader.LastLogIndex
-	leader.Log[logentry.Lsn()] = &logentry
+func (raft Raft) AppendEntries(receiverId int,term int,leaderId int,prevLogIndex int,prevLogTerm int,msg string,leaderCommit int){
 	// Attach other metadata with log data and replicate to other servers
-	entry := Event{"AppendRPC", Entry{raft.Cluster.Servers[raft.ThisServerId].Term, raft.ThisServerId, prevLogIndex, prevLogTerm, msg}}
-	for _, server := range raft.Cluster.Servers {
-		if server.Id != leader.Id {
-			server.EventCh <- entry
-			//fmt.Println("logentry sent to: " + strconv.Itoa(server.Id))
-		}
-	}
-	return logentry
+	fmt.Println("inside AppendEntries()")
+	appendEntry := Event{"AppendRPC", Entry{term,leaderId,prevLogIndex,prevLogTerm,msg,leaderCommit}}
+	raft.Cluster.Servers[receiverId].EventCh <- appendEntry
+}
+
+func (raft Raft) Append(data string) (LogStruct, error) {
+	prevLogIndex := raft.Cluster.Servers[raft.ThisServerId].LastLogIndex
+	prevLogTerm := raft.Cluster.Servers[raft.ThisServerId].LastLogTerm
+	// Prepare the log entry
+	logentry := LogStruct{prevLogIndex + 1, prevLogTerm + 1, data, false}
+	// Put the entry in leader's log and update the leader.LastLogIndex
+	raft.Cluster.Servers[raft.ThisServerId].Log[logentry.Lsn()] = &logentry
+	raft.Cluster.Servers[raft.ThisServerId].LastLogIndex = raft.Cluster.Servers[raft.ThisServerId].LastLogIndex+1
+	//fmt.Println(raft.Cluster.Servers[raft.ThisServerId].LastLogIndex)
+	// Also write the entry to the disk file
+	filename := (raft.Cluster).Path
+	err := writeToFile(filename, logentry)
+	return logentry, err
+}
+
+func Send(serverId int, msg string) {
+	// Send the message on the EventCh of the destination server
+	raft.Cluster.Servers[serverId].EventCh <- Event{"ClientAppend", msg}
+}
+
+func Receive(serverId int) LogStruct {
+	response := <-raft.Cluster.Servers[serverId].CommitCh
+	return response
 }
 
 // Source: "http://golangcookbook.blogspot.in/2012/11/generate-random-number-in-given-range.html"
@@ -444,49 +476,26 @@ func checkMajority(responses int) bool {
 	}
 }
 
-/*
-func (raft Raft) Append(data string) (LogStruct, error) {
-		fmt.Println("inside append")
-		// Writing to Files - https://gobyexample.com/writing-files
-		//Appending to Files - http://stackoverflow.com/questions/7151261/append-to-a-file-in-go?lq=1
-		//Check whether file already exists - http://stackoverflow.com/questions/12518876/how-to-check-if-a-file-exists-in-go
-		leader := raft.Cluster.Servers[raft.ThisServerId]
-		prevLogIndex := leader.LastLogIndex
-		prevLogTerm := leader.LastLogTerm
-		// Prepare the log entry
-		fmt.Println(prevLogIndex)
-		logentry := LogStruct{prevLogIndex + 1, prevLogTerm + 1, data, false}
-		// Put the entry in leader's log and update the leader.LastLogIndex
-		leader.Log[logentry.Lsn()] = &logentry
-		// Also write the entry to the disk file
-		filename := (raft.Cluster).Path
-		var e error
-		if _, err := os.Stat(filename); os.IsNotExist(err) {
-			_, err := os.Create(filename)
-			if err != nil {
-				e = err
-			}
-		}
-		logFile, err := os.OpenFile(filename, os.O_APPEND|os.O_WRONLY, 0666)
-		if err != nil {
-			e = err
-		}
-		defer logFile.Close()
-		if _, err = logFile.WriteString("\n "+strconv.Itoa(logentry.Lsn())+" "+logentry.Data());
-		err != nil {
-			e = err
-		}
-		return logentry,e
-}
-*/
-func Send(serverId int, msg string) {
-	// Send the message on the EventCh of the destination server
-	raft.Cluster.Servers[serverId].EventCh <- Event{"ClientAppend", msg}
-}
 
-func Receive(serverId int) LogStruct {
-	response := <-raft.Cluster.Servers[serverId].CommitCh
-	return response
+func writeToFile(filename string, logentry LogStruct) error {
+	// Writing to Files - https://gobyexample.com/writing-files
+	//Appending to Files - http://stackoverflow.com/questions/7151261/append-to-a-file-in-go?lq=1
+	//Check whether file already exists - http://stackoverflow.com/questions/12518876/how-to-check-if-a-file-exists-in-go
+	if _, err := os.Stat(filename); os.IsNotExist(err) {
+		_, err := os.Create(filename)
+		if err != nil {
+			return err
+		}
+	}
+	logFile, err := os.OpenFile(filename, os.O_APPEND|os.O_WRONLY, 0666)
+	if err != nil {
+		return err
+	}
+	defer logFile.Close()
+	if _, err = logFile.WriteString("\n " + strconv.Itoa(logentry.Lsn()) + " " + logentry.Data()); err != nil {
+		return err
+	}
+	return nil
 }
 
 // ErrRedirect as an Error object
