@@ -82,6 +82,9 @@ func (x LogStruct) Committed() bool {
 	return x.Log_commit
 }
 
+func (x LogStruct) Term() int {
+	return x.Log_term
+}
 // Raft setup
 type ServerConfig struct {
 	Id           int // Id of server. Must be unique
@@ -110,9 +113,6 @@ type Raft struct {
 	ThisServerId int
 	LeaderId     int
 	ServersCount int
-	//MajorityMap   map[string]int
-	//CmdHistMap    map[string]LogEntry
-	//ConnectionMap map[string]net.Conn
 }
 
 type SharedLog interface {
@@ -128,6 +128,7 @@ type SharedLog interface {
 
 type LogEntry interface {
 	Lsn() int
+	Term() int
 	Data() byte
 	Committed() bool
 }
@@ -209,15 +210,14 @@ func (raft Raft) follower() int {
 			msg := ev.data.(VoteReq) // type assertion
 			sender := raft.Cluster.Servers[msg.CandidateId]
 
-			if msg.Term < currentTerm {
-				//Responds with current term
+			if msg.Term < raft.Cluster.Servers[raft.ThisServerId].Term {
+				//Responds with current term for candidate to update its own term
 				sender.EventCh <- Event{"VoteResponse", VoteResponse{thisServerId, currentTerm, false}}
 			}
-			if msg.Term > currentTerm {
-				currentTerm = msg.Term // Updates the currentTerm
-			}
-			if !raft.Cluster.Servers[thisServerId].VoteHistory[currentTerm] { //not already voted in my term
-				resetCh <- true
+			if msg.Term > currentTerm && !raft.Cluster.Servers[thisServerId].VoteHistory[currentTerm]{//not already voted in my term
+				currentTerm = msg.Term 
+				raft.Cluster.Servers[thisServerId].Term = currentTerm
+			 	resetCh <- true
 				sender.EventCh <- Event{"VoteResponse", VoteResponse{thisServerId, -1, true}} //reply ok to event.msg.serverid
 				/*remember term, leader id (either in log or in separate file)*/
 				raft.Cluster.Servers[thisServerId].VoteHistory[currentTerm] = true
@@ -282,6 +282,7 @@ func (raft Raft) candidate() int {
 
 	// increment the current term
 	currentTerm := raft.Cluster.Servers[thisServerId].Term + 1
+	raft.Cluster.Servers[thisServerId].Term = currentTerm
 	// vote for self
 	votesReceived = votesReceived + 1
 	// reset election timer
@@ -351,6 +352,7 @@ func (raft Raft) candidate() int {
 }
 
 func (raft Raft) leader() int {
+	fmt.Println("Leader elected")
 	raft.LeaderId = raft.ThisServerId
 	var w sync.WaitGroup
 	responseCount := make(map[int]int)
@@ -459,7 +461,7 @@ func (raft Raft) AppendEntries(receiverId int,term int,leaderId int,prevLogIndex
 
 func (raft Raft) Append(data string) (LogStruct, error) {
 	prevLogIndex := raft.Cluster.Servers[raft.ThisServerId].LastLogIndex
-	prevLogTerm := raft.Cluster.Servers[raft.ThisServerId].LastLogTerm
+	prevLogTerm := raft.Cluster.Servers[raft.ThisServerId].LastLogTerm //(CHECK......)
 	// Prepare the log entry
 	logentry := LogStruct{prevLogIndex + 1, prevLogTerm + 1, data, false}
 	// Put the entry in leader's log and update the leader.LastLogIndex
@@ -510,7 +512,7 @@ func writeToFile(filename string, logentry LogStruct) error {
 		return err
 	}
 	defer logFile.Close()
-	if _, err = logFile.WriteString("\n " + strconv.Itoa(logentry.Lsn()) + " " + logentry.Data()); err != nil {
+	if _, err = logFile.WriteString("\n"+strconv.Itoa(logentry.Lsn())+" "+strconv.Itoa(logentry.Term())+" " +logentry.Data()); err != nil {
 		return err
 	}
 	return nil
