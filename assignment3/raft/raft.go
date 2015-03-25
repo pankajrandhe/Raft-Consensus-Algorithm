@@ -259,6 +259,7 @@ func (raft Raft) follower() int {
 			  reset heartbeat timer
 			  upgrade to event.msg.term if necessary*/
 		case "CommitResponse":
+			fmt.Println("Got commit response")
 			msg := ev.data.(CommitResponse)
 			raft.Cluster.Servers[raft.ThisServerId].Log[msg.Index].Log_commit = true
 		case "Timeout":
@@ -350,25 +351,59 @@ func (raft Raft) candidate() int {
 }
 
 func (raft Raft) leader() int {
+	raft.LeaderId = raft.ThisServerId
 	var w sync.WaitGroup
 	responseCount := make(map[int]int)
-	CommitIndex := 0
+	//CommitIndex := 0
+	lastIndex := raft.Cluster.Servers[raft.LeaderId].LastLogIndex
 	//fmt.Println(strconv.Itoa(raft.ThisServerId) + ": state:L event:leader elected")
-	prevLogIndex := raft.Cluster.Servers[raft.ThisServerId].LastLogIndex
-	prevLogTerm := raft.Cluster.Servers[raft.ThisServerId].LastLogTerm
 	// nextIndex contains next log entry to be sent to each server
-	//nextIndex := []int{prevLogIndex+1,prevLogIndex+1,prevLogIndex+1,prevLogIndex+1,prevLogIndex+1} 
+	nextIndex := []int{lastIndex+1,lastIndex+1,lastIndex+1,lastIndex+1,lastIndex+1} 
 	//matchIndex contains index of highest log entry known to be replicated for each server
-	//matchIndex := []int{0,0,0,0,0} 
-	HB := Event{"AppendRPC", Entry{raft.Cluster.Servers[raft.ThisServerId].Term,raft.ThisServerId,prevLogIndex,prevLogTerm,"",CommitIndex}}
+	matchIndex := []int{0,0,0,0,0} 
+	//commitSent contains index of the commited logentry acknowledged to followers
+	commitSent := []int{0,0,0,0,0} 
 	w.Add(1)
 	go func() {
 		defer w.Done()
 		for {
 			for _, server := range raft.Cluster.Servers {
-				if server.Id != raft.ThisServerId {
-					server.EventCh <- HB
-					//fmt.Println("Sent HB to " + strconv.Itoa(server.Id))
+				CommitIndex := raft.Cluster.Servers[raft.ThisServerId].CommitIndex
+				if server.Id != raft.LeaderId {
+					prevLogIndex := nextIndex[server.Id] - 1
+					prevLogTerm := raft.Cluster.Servers[raft.ThisServerId].LastLogTerm
+					term := raft.Cluster.Servers[raft.LeaderId].Term
+					// Check if we have got some data to send to follower server
+					if nextIndex[server.Id] <= raft.Cluster.Servers[raft.LeaderId].LastLogIndex{
+						fmt.Println("sending AppendEntriesRPC")
+						msg := raft.Cluster.Servers[raft.LeaderId].Log[nextIndex[server.Id]].Log_data
+						raft.AppendEntries(server.Id,term,raft.LeaderId,prevLogIndex,prevLogTerm,msg,CommitIndex)
+						nextIndex[server.Id] = nextIndex[server.Id] + 1 
+					}else{
+						// Else send the HeartBeat to mark the presence of the leader
+						msg := ""
+						raft.AppendEntries(server.Id,term,raft.LeaderId,prevLogIndex,prevLogTerm,msg,CommitIndex)
+						fmt.Println("Sent HB to " + strconv.Itoa(server.Id))
+					}  
+				}
+			}
+			time.Sleep(100 * time.Millisecond) //Sending HB every 100ms
+		}
+	}()
+
+	// This GO routine will send the Commit response to the follower servers once the logentry is committed at leader
+	w.Add(1)
+	go func(){
+		defer w.Done()
+		for{
+			for _, server := range raft.Cluster.Servers{
+				CommitIndex := raft.Cluster.Servers[raft.ThisServerId].CommitIndex
+				if server.Id != raft.LeaderId{
+					if CommitIndex > commitSent[server.Id] && matchIndex[server.Id] > commitSent[server.Id]{
+						response := CommitResponse{raft.Cluster.Servers[raft.LeaderId].Log[commitSent[server.Id] + 1].Log_lsn,true}
+						server.EventCh <- Event{"CommitResponse",response}
+						commitSent[server.Id] = commitSent[server.Id] + 1
+					}		
 				}
 			}
 			time.Sleep(100 * time.Millisecond) //Sending HB every 100ms
@@ -383,38 +418,24 @@ func (raft Raft) leader() int {
 		case "ClientAppend":
 			msg := ev.data.(string)
 			fmt.Println("Leader got:" + msg)
-			prevLogIndex := raft.Cluster.Servers[raft.ThisServerId].LastLogIndex
-			prevLogTerm := raft.Cluster.Servers[raft.ThisServerId].LastLogTerm
-			leader := raft.Cluster.Servers[raft.ThisServerId]
 			logentry,err := raft.Append(msg)
-			//raft.Cluster.Servers[raft.ThisServerId].LastLogIndex = raft.Cluster.Servers[raft.ThisServerId].LastLogIndex+1
-			if err==nil{responseCount[logentry.Lsn()] = 1} //Since the leader has put the entry successfully in its log
-			// Send the AppendEntries Request to other servers
-			for _, server := range raft.Cluster.Servers {
-				if server.Id != leader.Id {
-					fmt.Println("sending AppendEntriesRPC")
-					raft.AppendEntries(server.Id,leader.Term,leader.Id,prevLogIndex,prevLogTerm,msg,CommitIndex)
-				}
-			}		
+			raft.Cluster.Servers[raft.ThisServerId].LastLogIndex = raft.Cluster.Servers[raft.ThisServerId].LastLogIndex+1
+			if err==nil{responseCount[logentry.Lsn()] = 1} //Since the leader has put the entry successfully in its log	
 		case "AppendResponse":
 			// Check the append response and commit the leader's log entry on success
 			msg := ev.data.(AppendResponse)
 			if msg.Success {
-				responseCount[msg.Index] = responseCount[msg.Index] + 1
+				// Icrement the matchIndex for the follower server
+				matchIndex[msg.ServerId] = matchIndex[msg.ServerId] + 1
+				responseCount[msg.Index] = responseCount[msg.Index] + 1 // to check for majority
 				if checkMajority(responseCount[msg.Index]) && responseCount[msg.Index] == 3 {
 					// if got majority commit the logentry at leader
 					raft.Cluster.Servers[raft.ThisServerId].Log[msg.Index].Log_commit = true
+					// Increment the CommitIndex
+					raft.Cluster.Servers[raft.ThisServerId].CommitIndex=raft.Cluster.Servers[raft.ThisServerId].CommitIndex+1 
 					// Task: Put the entry on Leader's commitCh
-					// Task: Increment the CommitIndex
 					// Task: Increment the lastApplied after putting entry on commitCh
 					// Task: Communicate with followers to commit this logentry
-					/*for _, server := range raft.Cluster.Servers{
-						if server.Id!=raft.LeaderId{
-							server.EventCh <- Event{"CommitResponse",CommitResponse{msg.Index,true}}
-							fmt.Print("Sent CommitResponse to: ")
-							fmt.Println(server.Id)
-						}
-					}*/
 				}
 			}
 		}
@@ -432,7 +453,6 @@ func (raft Raft) RequestVote(serverId int, voteAppeal Event) {
 
 func (raft Raft) AppendEntries(receiverId int,term int,leaderId int,prevLogIndex int,prevLogTerm int,msg string,leaderCommit int){
 	// Attach other metadata with log data and replicate to other servers
-	fmt.Println("inside AppendEntries()")
 	appendEntry := Event{"AppendRPC", Entry{term,leaderId,prevLogIndex,prevLogTerm,msg,leaderCommit}}
 	raft.Cluster.Servers[receiverId].EventCh <- appendEntry
 }
@@ -444,8 +464,6 @@ func (raft Raft) Append(data string) (LogStruct, error) {
 	logentry := LogStruct{prevLogIndex + 1, prevLogTerm + 1, data, false}
 	// Put the entry in leader's log and update the leader.LastLogIndex
 	raft.Cluster.Servers[raft.ThisServerId].Log[logentry.Lsn()] = &logentry
-	raft.Cluster.Servers[raft.ThisServerId].LastLogIndex = raft.Cluster.Servers[raft.ThisServerId].LastLogIndex+1
-	//fmt.Println(raft.Cluster.Servers[raft.ThisServerId].LastLogIndex)
 	// Also write the entry to the disk file
 	filename := (raft.Cluster).Path
 	err := writeToFile(filename, logentry)

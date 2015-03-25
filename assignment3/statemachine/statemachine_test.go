@@ -17,14 +17,14 @@ func TestRaft(t *testing.T) {
 	time.Sleep(1 * time.Second) //let the servers boot-up
 
 	// Test on Leader's commit channel
-	raft.Send(serverMap[4].ThisServerId, "set abc 10 0 10\r\n")
-	msg1 := raft.Receive(serverMap[4].ThisServerId)
+	raft.Send(raft.RaftMap[4].ThisServerId, "set abc 10 0 10\r\n")
+	msg1 := raft.Receive(raft.RaftMap[4].ThisServerId)
 	if !msg1.Log_commit {
 		t.Error(commit_err)
 	}
 	//time.Sleep(1*time.Second)
-	raft.Send(serverMap[4].ThisServerId, "set x/y/z 8 0 0\r\n")
-	msg2 := raft.Receive(serverMap[4].ThisServerId)
+	raft.Send(raft.RaftMap[4].ThisServerId, "set x/y/z 8 0 0\r\n")
+	msg2 := raft.Receive(raft.RaftMap[4].ThisServerId)
 	if !msg2.Log_commit {
 		t.Error(commit_err)
 	}

@@ -3,18 +3,17 @@ package main
 import (
 	"github.com/pankajrandhe/cs733/assignment3/raft"
 	"sync"
+	"time"
 )
 
 const serverCount int = 5
 
-var serverMap map[int]*raft.Raft
-
 func main() {
-
-	serverMap = make(map[int]*raft.Raft)
 	var servers = make([]raft.ServerConfig, 5, 5)
 	var cluster = raft.ClusterConfig{"/tmp/log_file", servers}
 	w := &sync.WaitGroup{}
+
+	raft.RaftMap = make(map[int]*raft.Raft)
 
 	// Configure the 5 servers in the cluster
 	for i := 0; i < serverCount; i++ {
@@ -39,9 +38,25 @@ func main() {
 		//Initialize the Raft Instance for each server
 		raftInst, _ := raft.NewRaft(&cluster, server.Id, leaderId, serverCount)
 		// Store the raft instances of each server in the Map
-		serverMap[server.Id] = raftInst
+		raft.RaftMap[server.Id] = raftInst
 		w.Add(1)
 		go raftInst.Loop(w)
 	}
+
+	time.Sleep(1 * time.Second)
+
+	go func() {
+		// Test on Leader's commit channel
+		raft.Send(raft.RaftMap[4].ThisServerId, "set abc 10 0 10\r\n")
+		//msg1 := raft.Receive(serverMap[4].ThisServerId)
+		//fmt.Println(msg1)
+		//time.Sleep(10*time.Millisecond)
+		raft.Send(raft.RaftMap[4].ThisServerId, "set x/y/z 8 0 0\r\n")
+		//msg2 := raft.Receive(serverMap[4].ThisServerId)
+		//time.Sleep(10*time.Millisecond)
+		raft.Send(raft.RaftMap[4].ThisServerId, "set p/q/r 8 0 0\r\n")
+		//time.Sleep(10*time.Millisecond)
+		//raft.Send(raft.RaftMap[4].ThisServerId, "set p/q/r 8 0 0\r\n")*/
+	}()
 	w.Wait()
 }
