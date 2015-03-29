@@ -6,7 +6,7 @@ This project handles the tasks concerned with Raft side implementation of the Re
 
 ### Program Flow ###
 
-* On boting up servers perform the election to elect the leader for the cluster.
+* On booting up servers perform the election to elect the leader for the cluster.
 * The Client sends a command to the server.
 * If the server happens to be leader it logs the command in its own log and brodcasts the entry to all servers.   
 * After validation servers send back an acknowledgement to the Leader. 
@@ -19,8 +19,8 @@ the state machine.
 
 
 ### TO DO ###
-* To add the test cases to achieve leader change.
-* To store log on disk file, currently storing it only in maps.
+* To add more test cases to achieve leader change.
+* Message dropping in inter-server communication.
 
 
   
