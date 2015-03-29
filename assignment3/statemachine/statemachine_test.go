@@ -18,7 +18,8 @@ func TestRaft(t *testing.T) {
 	var w sync.WaitGroup
 	var leader int
 	var flag = false
-	var commitCount = 0
+	var commitCount1, commitCount2 int = 0, 0
+	var response1, response2 raft.LogStruct
 	
 	// check who is the leader
 	for{
@@ -33,30 +34,47 @@ func TestRaft(t *testing.T) {
 			break
 		}
 	}
-
 	// Leader is legitimate or not (there should be only one leader OR leader HB not yet received)
 	for s:=0; s<5;s++{
 		if (leader == raft.RaftMap[s].LeaderId) || (raft.RaftMap[s].LeaderId == -1){
 		} else{
 			t.Error("More than one leader for the term")
 		}
-
 	}
 	
-	// Now try to append at leader's log and check if the logentry pops out at each server's commit channel
-	raft.RaftMap[leader].ClientSend("set x/y/z 10 0 10\r\n")
+	// Now Append at leader's log and check if the logentry pops out at each server's commit channel
+	raft.RaftMap[leader].ClientSend("set country India\r\n")
 	time.Sleep(3*time.Second)
 	for s:=0; s<5;s++ {
 		w.Add(1)
 		go func(m int){
-			<- raft.RaftMap[m].CommitCh
-			commitCount++
+			response1 = <- raft.RaftMap[m].CommitCh
+			commitCount1++
 			w.Done()
 		}(s)
 	}
 	w.Wait()	
-	if commitCount <3{
+	if commitCount1 <3{
 		t.Error("Logentry not coming out of the commit channel of the majority servers")
 	}
 	
+	// Send another Append and check if logs are ordered
+	raft.RaftMap[leader].ClientSend("set country Sweden\r\n")
+	time.Sleep(3*time.Second)
+	for s:=0; s<5;s++ {
+		w.Add(1)
+		go func(m int){
+			response2 = <- raft.RaftMap[m].CommitCh
+			commitCount2++
+			w.Done()
+		}(s)
+	}
+	w.Wait()	
+	if commitCount2 <3{
+		t.Error("Logentry not coming out of the commit channel of the majority servers")
+	}
+	if response1.Log_lsn >= response2.Log_lsn{
+		t.Error("Logentries are not monotonically increasing")
+	}
+
 }
