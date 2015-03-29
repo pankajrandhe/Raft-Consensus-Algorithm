@@ -1,10 +1,10 @@
 package main
 
 import (
-	"errors"
 	"github.com/pankajrandhe/cs733/assignment3/raft"
 	"testing"
 	"time"
+	"sync"
 )
 
 // start the servers
@@ -13,19 +13,50 @@ func init() {
 }
 
 func TestRaft(t *testing.T) {
-	commit_err := errors.New("Entry not committed")
 	time.Sleep(1 * time.Second) //let the servers boot-up
+	
+	var w sync.WaitGroup
+	var leader int
+	var flag = false
+	var commitCount = 0
+	
+	// check who is the leader
+	for{
+		for s:=0; s<5;s++{
+			leader = raft.RaftMap[s].LeaderId  //check if any of the server has info. about the leader
+			if leader != -1{
+				flag = true
+				break
+			}
+		}
+		if flag{
+			break
+		}
+	}
 
-	// Test on Leader's commit channel
-	raft.Send(raft.RaftMap[4].ThisServerId, "set abc 10 0 10\r\n")
-	msg1 := raft.Receive(raft.RaftMap[4].ThisServerId)
-	if !msg1.Log_commit {
-		t.Error(commit_err)
+	// Leader is legitimate or not (there should be only one leader OR leader HB not yet received)
+	for s:=0; s<5;s++{
+		if (leader == raft.RaftMap[s].LeaderId) || (raft.RaftMap[s].LeaderId == -1){
+		} else{
+			t.Error("More than one leader for the term")
+		}
+
 	}
-	//time.Sleep(1*time.Second)
-	raft.Send(raft.RaftMap[4].ThisServerId, "set x/y/z 8 0 0\r\n")
-	msg2 := raft.Receive(raft.RaftMap[4].ThisServerId)
-	if !msg2.Log_commit {
-		t.Error(commit_err)
+	
+	// Now try to append at leader's log and check if the logentry pops out at each server's commit channel
+	raft.RaftMap[leader].ClientSend("set x/y/z 10 0 10\r\n")
+	time.Sleep(3*time.Second)
+	for s:=0; s<5;s++ {
+		w.Add(1)
+		go func(m int){
+			<- raft.RaftMap[m].CommitCh
+			commitCount++
+			w.Done()
+		}(s)
 	}
+	w.Wait()	
+	if commitCount <3{
+		t.Error("Logentry not coming out of the commit channel of the majority servers")
+	}
+	
 }

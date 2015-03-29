@@ -3,60 +3,52 @@ package main
 import (
 	"github.com/pankajrandhe/cs733/assignment3/raft"
 	"sync"
-	"time"
 )
 
 const serverCount int = 5
 
 func main() {
 	var servers = make([]raft.ServerConfig, 5, 5)
-	var cluster = raft.ClusterConfig{"/tmp/log_file", servers}
+	var cluster = []raft.ClusterConfig{
+										{"/tmp/log_file0", servers},
+										{"/tmp/log_file1", servers},
+										{"/tmp/log_file2", servers},
+										{"/tmp/log_file3", servers},
+										{"/tmp/log_file4", servers},
+									}
 	w := &sync.WaitGroup{}
-
-	raft.RaftMap = make(map[int]*raft.Raft)
 
 	// Configure the 5 servers in the cluster
 	for i := 0; i < serverCount; i++ {
 		// Define the sever parameters while booting-up
 		id := i
-		eventCh := make(chan raft.Event)
+		// client port to be added 
+		// log port to be added
+
+		serverConfig := raft.ServerConfig{id}
+		servers[i] = serverConfig
+	}
+	
+	for k := 0; k < serverCount; k++{
+		leaderId := -1 // since leader is not elected thus leaderid has invalid value... (CHECK)
+		eventCh := make(chan interface{})
 		commitCh := make(chan raft.LogStruct)
-		term := 0
+		currentTerm := 0
 		lastLogTerm := 0
 		lastLogIndex := 0
-		VoteHistory := make([]bool, 10) //Change later on, voteHistrory can't be limited ... (CHECK)
+		VotedFor := -1 
 		commitIndex := 0
 		lastApplied := 0
 		log := make(map[int]*raft.LogStruct)
-
-		serverConfig := raft.ServerConfig{id, eventCh, commitCh, term, lastLogTerm, lastLogIndex, VoteHistory, commitIndex, lastApplied, log}
-		servers[i] = serverConfig
-	}
-	// Spawn five servers as GO routines
-	for _, server := range cluster.Servers {
-		leaderId := -1 // since leader is not elected thus leaderid has invalid value... (CHECK)
 		//Initialize the Raft Instance for each server
-		raftInst, _ := raft.NewRaft(&cluster, server.Id, leaderId, serverCount)
-		// Store the raft instances of each server in the Map
-		raft.RaftMap[server.Id] = raftInst
-		w.Add(1)
-		go raftInst.Loop(w)
+		raftInst, _ := raft.NewRaft(&cluster[k], k, leaderId, serverCount,eventCh,commitCh,
+									currentTerm,lastLogTerm,lastLogIndex,VotedFor,commitIndex,lastApplied,log)
+		raft.RaftMap[k] = raftInst
 	}
-
-	time.Sleep(1 * time.Second)
-
-	go func() {
-		// Test on Leader's commit channel
-		raft.Send(raft.RaftMap[4].ThisServerId, "set abc 10 0 10\r\n")
-		//msg1 := raft.Receive(serverMap[4].ThisServerId)
-		//fmt.Println(msg1)
-		//time.Sleep(10*time.Millisecond)
-		raft.Send(raft.RaftMap[4].ThisServerId, "set x/y/z 8 0 0\r\n")
-		//msg2 := raft.Receive(serverMap[4].ThisServerId)
-		//time.Sleep(10*time.Millisecond)
-		raft.Send(raft.RaftMap[4].ThisServerId, "set p/q/r 8 0 0\r\n")
-		//time.Sleep(10*time.Millisecond)
-		//raft.Send(raft.RaftMap[4].ThisServerId, "set p/q/r 8 0 0\r\n")*/
-	}()
+	
+	for m:=0; m<serverCount; m++{
+		w.Add(1)
+		go raft.RaftMap[m].Loop(w)
+	}
 	w.Wait()
 }
