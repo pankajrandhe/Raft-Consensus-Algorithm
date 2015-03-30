@@ -15,12 +15,13 @@ const (
 )
 
 const serverDown int = 9999 // just for testing
-type KillServer struct {} //just for testing
+type KillServer struct{}    //just for testing
 
-var T int = 150 // Timeout between T and 2T
+var T int = 150   // Timeout between T and 2T
 var threshold = 3 // Threshold value for majority
 
 var RaftMap = make(map[int]*Raft)
+
 //type Lsn uint64 //Log sequence number, unique for all time.
 
 //type ErrRedirect int // See Log.Append. Implements Error interface.
@@ -32,10 +33,10 @@ type LogStruct struct {
 	Log_commit bool
 }
 
-type Timeout struct{
+type Timeout struct {
 }
 
-type ClientAppend struct{
+type ClientAppend struct {
 	msg string
 }
 
@@ -83,9 +84,10 @@ func (x LogStruct) Committed() bool {
 func (x LogStruct) Term() int {
 	return x.Log_term
 }
+
 // Raft setup
 type ServerConfig struct {
-	Id           int // Id of server. Must be unique
+	Id int // Id of server. Must be unique
 	//client port
 	// log port
 }
@@ -106,21 +108,21 @@ type Raft struct {
 	CurrentTerm  int
 	LastLogTerm  int
 	LastLogIndex int
-	VotedFor  int
+	VotedFor     int
 	CommitIndex  int
 	LastApplied  int
 	Log          map[int]*LogStruct
 }
 
 type SharedLog interface {
-	// Each data item is wrapped in a LogEntry with a unique lsn. 
+	// Each data item is wrapped in a LogEntry with a unique lsn.
 	// The only error that will be returned is ErrRedirect,
 	// to indicate the server id of the leader. Append initiates
 	// a local disk write and a broadcast to the other replicas,
 	// and returns without waiting for the result.
 	Append(data string) (LogStruct, error)
 	RequestVote(serverId int, voteAppeal VoteRequest)
-	AppendEntries(receiverId int,term int,leaderId int,prevLogIndex int,prevLogTerm int,msg string,leaderCommit int)
+	AppendEntries(receiverId int, term int, leaderId int, prevLogIndex int, prevLogTerm int, msg string, leaderCommit int)
 }
 
 type LogEntry interface {
@@ -137,12 +139,12 @@ type LogEntry interface {
 
 //func NewRaft(config *ClusterConfig, thisServerId int, commitCh chan LogEntry) (*Raft, error) {
 func NewRaft(config *ClusterConfig, thisServerId int, leaderId int, servers int, eventCh chan interface{},
-			commitCh chan LogStruct,term int,lastLogTerm  int, lastLogIndex int, votedFor  int,commitIndex  int,
-			lastApplied int, log map[int]*LogStruct) (*Raft, error) {
-	
+	commitCh chan LogStruct, term int, lastLogTerm int, lastLogIndex int, votedFor int, commitIndex int,
+	lastApplied int, log map[int]*LogStruct) (*Raft, error) {
+
 	var raft Raft
 	raft = Raft{config, thisServerId, leaderId, servers, eventCh, commitCh, term, lastLogTerm, lastLogIndex,
-				votedFor, commitIndex, lastApplied, log}
+		votedFor, commitIndex, lastApplied, log}
 	var err error = nil
 	return &raft, err
 }
@@ -157,7 +159,7 @@ func (raft *Raft) Loop(w *sync.WaitGroup) {
 			state = raft.candidate()
 		case leader:
 			state = raft.leader()
-		case serverDown:		// Just the dummy case to kill the server for testing
+		case serverDown: // Just the dummy case to kill the server for testing
 			return
 		default:
 			return
@@ -203,19 +205,19 @@ func (raft *Raft) follower() int {
 			raft.CommitCh <- LogStruct{0, 0, msg, false}
 		case VoteRequest:
 			//fmt.Println(strconv.Itoa(raft.ThisServerId) + ": state:F event:VoteReq_recd from "+strconv.Itoa(ev.(VoteRequest).CandidateId))
-			msg := ev.(VoteRequest) 
+			msg := ev.(VoteRequest)
 			toServer := raft.Cluster.Servers[msg.CandidateId].Id
 			if msg.Term < raft.CurrentTerm {
 				//Responds with current term for candidate to update its own term
-				raft.Send(toServer,VoteResponse{raft.ThisServerId, raft.CurrentTerm, false})
+				raft.Send(toServer, VoteResponse{raft.ThisServerId, raft.CurrentTerm, false})
 			}
-			cond1 := ((msg.LastLogTerm > raft.LastLogTerm)&&(raft.VotedFor == -1))
-			cond2 := ((msg.LastLogTerm == raft.LastLogTerm)&&(msg.LastLogIndex >= raft.LastLogIndex)&& (raft.VotedFor == -1))
-			if cond1 || cond2{
+			cond1 := ((msg.LastLogTerm > raft.LastLogTerm) && (raft.VotedFor == -1))
+			cond2 := ((msg.LastLogTerm == raft.LastLogTerm) && (msg.LastLogIndex >= raft.LastLogIndex) && (raft.VotedFor == -1))
+			if cond1 || cond2 {
 				/*remember term, leader id (either in log or in separate file)*/
 				raft.VotedFor = msg.CandidateId
-				raft.CurrentTerm = msg.Term 
-			 	resetCh <- true
+				raft.CurrentTerm = msg.Term
+				resetCh <- true
 				raft.Send(toServer, VoteResponse{raft.ThisServerId, -1, true}) //reply ok to event.msg.serverids
 				//fmt.Println("voted for "+strconv.Itoa(msg.CandidateId))
 			}
@@ -226,20 +228,20 @@ func (raft *Raft) follower() int {
 				//fmt.Println(strconv.Itoa(raft.ThisServerId) + "AppendEntriesRPC(HB) received")
 				// Update the Leader ID in server's own Raft object
 				raft.LeaderId = msg.LeaderId
-				if raft.CommitIndex < msg.LeaderCommit{
+				if raft.CommitIndex < msg.LeaderCommit {
 					raft.CommitIndex = msg.LeaderCommit
-					go func(){
-						if raft.CommitIndex > raft.LastApplied{
+					go func() {
+						if raft.CommitIndex > raft.LastApplied {
 							// put the log-entry on the commit channel
 							raft.CommitCh <- *raft.Log[raft.LastApplied+1]
 							raft.LastApplied = raft.LastApplied + 1
 						}
 					}()
-				}	
+				}
 			} else {
 				//fmt.Println(strconv.Itoa(raft.ThisServerId) + "AppendEntriesRPC received")
 				//prev entries of my log and event.msg  should match
-				if raft.LastLogIndex == 0 || (raft.LastLogIndex == msg.PrevLogIndex && raft.LastLogTerm==msg.PrevLogTerm){
+				if raft.LastLogIndex == 0 || (raft.LastLogIndex == msg.PrevLogIndex && raft.LastLogTerm == msg.PrevLogTerm) {
 					//Prepare the logentry and insert it into map
 					logentry := LogStruct{raft.LastLogIndex + 1, msg.Term, msg.Msg, false}
 					raft.Log[raft.LastLogIndex+1] = &logentry
@@ -249,18 +251,18 @@ func (raft *Raft) follower() int {
 					err := writeToFile(filename, logentry)
 					//flush disk log
 					//respond ok to event.msg.serverid
-					ok := AppendResponse{raft.LastLogTerm,raft.LastLogIndex, raft.ThisServerId, true}
-					if err == nil{
+					ok := AppendResponse{raft.LastLogTerm, raft.LastLogIndex, raft.ThisServerId, true}
+					if err == nil {
 						raft.Send(msg.LeaderId, ok)
 						//fmt.Println(strconv.Itoa(raft.ThisServerId)+": AppendResponse sent to"+strconv.Itoa(raft.LeaderId))
 					}
-					if raft.CommitIndex < msg.LeaderCommit{
+					if raft.CommitIndex < msg.LeaderCommit {
 						raft.CommitIndex = msg.LeaderCommit
-						go func(){
-							if raft.CommitIndex > raft.LastApplied{
-							// put the log-entry on the commit channel
-							raft.CommitCh <- *raft.Log[raft.LastApplied+1]
-							raft.LastApplied = raft.LastApplied + 1
+						go func() {
+							if raft.CommitIndex > raft.LastApplied {
+								// put the log-entry on the commit channel
+								raft.CommitCh <- *raft.Log[raft.LastApplied+1]
+								raft.LastApplied = raft.LastApplied + 1
 							}
 						}()
 					}
@@ -333,7 +335,7 @@ func (raft *Raft) candidate() int {
 		ev := <-raft.EventCh
 		switch ev.(type) {
 		case VoteResponse:
-			msg := ev.(VoteResponse) 
+			msg := ev.(VoteResponse)
 			if msg.Vote {
 				//fmt.Println(strconv.Itoa(raft.ThisServerId) + "vote recd")
 				votesReceived = votesReceived + 1 // increment the voteCount
@@ -348,7 +350,7 @@ func (raft *Raft) candidate() int {
 		case AppendRPC:
 			// Check for leader's term, Return to follower state if the leader is legitimate
 			msg := ev.(AppendRPC)
-			if msg.Term > raft.CurrentTerm{
+			if msg.Term > raft.CurrentTerm {
 				raft.CurrentTerm = msg.Term
 				raft.VotedFor = -1
 				return follower
@@ -356,7 +358,7 @@ func (raft *Raft) candidate() int {
 		case VoteRequest:
 			// Check for leader's term, Return to follower state if the leader is legitimate
 			msg := ev.(VoteRequest)
-			if msg.Term > raft.CurrentTerm{
+			if msg.Term > raft.CurrentTerm {
 				raft.CurrentTerm = msg.Term
 				raft.VotedFor = -1
 				return follower
@@ -377,9 +379,9 @@ func (raft *Raft) leader() int {
 	//fmt.Println(strconv.Itoa(raft.ThisServerId) + ": state:L event:leader elected")
 	//fmt.Println(raft.CurrentTerm)
 	// nextIndex contains next log entry to be sent to each server
-	nextIndex := []int{lastIndex+1,lastIndex+1,lastIndex+1,lastIndex+1,lastIndex+1} 
+	nextIndex := []int{lastIndex + 1, lastIndex + 1, lastIndex + 1, lastIndex + 1, lastIndex + 1}
 	//matchIndex contains index of highest log entry known to be replicated for each server
-	matchIndex := []int{0,0,0,0,0} 
+	matchIndex := []int{0, 0, 0, 0, 0}
 
 	w.Add(1)
 	go func() {
@@ -389,19 +391,19 @@ func (raft *Raft) leader() int {
 				CommitIndex := raft.CommitIndex
 				if server.Id != raft.LeaderId {
 					prevLogIndex := nextIndex[server.Id] - 1
-					prevLogTerm := raft.LastLogTerm 				//(CHECK...)
+					prevLogTerm := raft.LastLogTerm //(CHECK...)
 					// Check if we have got some data to send to follower server
-					if nextIndex[server.Id] <= raft.LastLogIndex{
+					if nextIndex[server.Id] <= raft.LastLogIndex {
 						msg := raft.Log[nextIndex[server.Id]].Log_data
-						raft.AppendEntries(server.Id,raft.CurrentTerm,raft.LeaderId,prevLogIndex,prevLogTerm,msg,CommitIndex)
+						raft.AppendEntries(server.Id, raft.CurrentTerm, raft.LeaderId, prevLogIndex, prevLogTerm, msg, CommitIndex)
 						//fmt.Println("AppendEntriesRPC Sent")
-						nextIndex[server.Id] = nextIndex[server.Id] + 1 
-					}else{
+						nextIndex[server.Id] = nextIndex[server.Id] + 1
+					} else {
 						// Else send the HeartBeat to mark the presence of the leader
 						msg := ""
-						raft.AppendEntries(server.Id,raft.CurrentTerm,raft.LeaderId,prevLogIndex,prevLogTerm,msg,CommitIndex)
+						raft.AppendEntries(server.Id, raft.CurrentTerm, raft.LeaderId, prevLogIndex, prevLogTerm, msg, CommitIndex)
 						//fmt.Println("hb sent")
-					}  
+					}
 				}
 			}
 			time.Sleep(100 * time.Millisecond) //Sending HB every 100ms
@@ -415,30 +417,33 @@ func (raft *Raft) leader() int {
 		case ClientAppend:
 			msg := ev.(ClientAppend).msg
 			//fmt.Println("Leader got:" + msg)
-			logentry,err := raft.Append(msg) // Append entry to local log
-			raft.LastLogIndex = raft.LastLogIndex+1
-			if err==nil{responseCount[logentry.Lsn()] = 1} //Since the leader has put the entry successfully in its log	
+			logentry, err := raft.Append(msg) // Append entry to local log
+			raft.LastLogIndex = raft.LastLogIndex + 1
+			if err == nil {
+				responseCount[logentry.Lsn()] = 1
+			} //Since the leader has put the entry successfully in its log
 		case AppendRPC:
 			// Check for leader's term, Return to follower state if the leader is legitimate
 			msg := ev.(AppendRPC)
-			if msg.Term > raft.CurrentTerm{
+			if msg.Term > raft.CurrentTerm {
 				raft.CurrentTerm = msg.Term
 				raft.VotedFor = -1
 				//fmt.Println(strconv.Itoa(raft.ThisServerId)+"leader returning to follower(higher term in AppendRPC)=================================")
 				return follower
 			}
+		/* have confusion here */
 		/*case VoteRequest:
-			// Check for leader's term, Return to follower state if the leader is legitimate
-			fmt.Println(strconv.Itoa(raft.ThisServerId) + ": state:L event:VoteReq_recd from "+strconv.Itoa(ev.(VoteRequest).CandidateId))
-			msg := ev.(VoteRequest)
-							fmt.Println(msg.Term)
-				fmt.Println(raft.CurrentTerm)
-			if msg.Term > raft.CurrentTerm{
-				raft.CurrentTerm = msg.Term
-				raft.VotedFor = -1
-				fmt.Println("leader returning to follower (higher term in Voterequest)===================")
-				return follower
-			}*/
+		// Check for leader's term, Return to follower state if the leader is legitimate
+		fmt.Println(strconv.Itoa(raft.ThisServerId) + ": state:L event:VoteReq_recd from "+strconv.Itoa(ev.(VoteRequest).CandidateId))
+		msg := ev.(VoteRequest)
+						fmt.Println(msg.Term)
+			fmt.Println(raft.CurrentTerm)
+		if msg.Term > raft.CurrentTerm{
+			raft.CurrentTerm = msg.Term
+			raft.VotedFor = -1
+			fmt.Println("leader returning to follower (higher term in Voterequest)===================")
+			return follower
+		}*/
 		case AppendResponse:
 			// Check the append response and commit the leader's log entry on success
 			msg := ev.(AppendResponse)
@@ -451,23 +456,23 @@ func (raft *Raft) leader() int {
 					// if got majority commit the logentry at leader
 					raft.Log[msg.Index].Log_commit = true
 					// Increment the CommitIndex
-					raft.CommitIndex=raft.CommitIndex+1
-					go func(){ // is this position correct? (CHECK........)
-						if raft.CommitIndex > raft.LastApplied{
-						// put the log-entry on the commit channel
-						raft.CommitCh <- *raft.Log[raft.LastApplied+1]
-						raft.LastApplied = raft.LastApplied + 1
-						} 
+					raft.CommitIndex = raft.CommitIndex + 1
+					go func() { // is this position correct? (CHECK........)
+						if raft.CommitIndex > raft.LastApplied {
+							// put the log-entry on the commit channel
+							raft.CommitCh <- *raft.Log[raft.LastApplied+1]
+							raft.LastApplied = raft.LastApplied + 1
+						}
 					}()
 				}
-			}else{
-					// leader can fail in appending entry to follower due to log inconsistency
-					// Decrement the nextIndex and retry
-					nextIndex[msg.ServerId] = nextIndex[msg.ServerId] - 1
-			} 
-			case KillServer: 
-				raft.LeaderId = -1 //since the server is no more leader now
-				return serverDown
+			} else {
+				// leader can fail in appending entry to follower due to log inconsistency
+				// Decrement the nextIndex and retry
+				nextIndex[msg.ServerId] = nextIndex[msg.ServerId] - 1
+			}
+		case KillServer:
+			raft.LeaderId = -1 //since the server is no more leader now
+			return serverDown
 		}
 	}
 	w.Wait()
@@ -478,20 +483,20 @@ func (raft *Raft) leader() int {
 func (raft *Raft) RequestVote(serverId int, voteAppeal VoteRequest) {
 	// Request the vote on vote channel of the follower
 	//raft.Cluster.Servers[serverId].EventCh <- voteAppeal
-	raft.Send(serverId,voteAppeal)
+	raft.Send(serverId, voteAppeal)
 	/** NOTE: In case of real RPC it will return either term or vote **/
 }
 
-func (raft *Raft) AppendEntries(receiverId int,term int,leaderId int,prevLogIndex int,prevLogTerm int,msg string,leaderCommit int){
+func (raft *Raft) AppendEntries(receiverId int, term int, leaderId int, prevLogIndex int, prevLogTerm int, msg string, leaderCommit int) {
 	// Attach other metadata with log data and replicate to other servers
-	appendEntry := AppendRPC{term,leaderId,prevLogIndex,prevLogTerm,msg,leaderCommit}
+	appendEntry := AppendRPC{term, leaderId, prevLogIndex, prevLogTerm, msg, leaderCommit}
 	raft.Send(receiverId, appendEntry)
 }
 
 func (raft *Raft) Append(data string) (LogStruct, error) {
 	// Prepare the log entry
 	index := raft.LastLogIndex
-	logentry := LogStruct{ index + 1, raft.CurrentTerm, data, false}
+	logentry := LogStruct{index + 1, raft.CurrentTerm, data, false}
 	// Put the entry in leader's log and update the leader.LastLogIndex
 	raft.Log[logentry.Lsn()] = &logentry
 	// Also write the entry to the disk file
@@ -513,11 +518,9 @@ func checkMajority(responses int) bool {
 	}
 }
 
-
 func writeToFile(filename string, logentry LogStruct) error {
-	// Writing to Files - https://gobyexample.com/writing-files
-	//Appending to Files - http://stackoverflow.com/questions/7151261/append-to-a-file-in-go?lq=1
-	//Check whether file already exists - http://stackoverflow.com/questions/12518876/how-to-check-if-a-file-exists-in-go
+	//Source : "http://stackoverflow.com/questions/7151261/append-to-a-file-in-go?lq=1"
+	//Source : "http://stackoverflow.com/questions/12518876/how-to-check-if-a-file-exists-in-go"
 	if _, err := os.Stat(filename); os.IsNotExist(err) {
 		_, err := os.Create(filename)
 		if err != nil {
@@ -529,36 +532,33 @@ func writeToFile(filename string, logentry LogStruct) error {
 		return err
 	}
 	defer logFile.Close()
-	if _, err = logFile.WriteString("\n"+strconv.Itoa(logentry.Lsn())+" "+strconv.Itoa(logentry.Term())+" " +logentry.Data()); err != nil {
+	if _, err = logFile.WriteString("\n" + strconv.Itoa(logentry.Lsn()) + " " + strconv.Itoa(logentry.Term()) + " " + logentry.Data()); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (raft *Raft) Send(toServer int, msg interface{}){
-	delay_prob := random(1,100)
-    if delay_prob < 30{
-    	RaftMap[toServer].Receive(raft.ThisServerId,msg) //send directly
-	} else if delay_prob > 30 && delay_prob <60 {
-    	_ = time.AfterFunc(5 * time.Millisecond, func(){RaftMap[toServer].Receive(raft.ThisServerId,msg)})
-    }else {//if delay_prob > 60 && delay_prob <90 {
-    	_ = time.AfterFunc(10 * time.Millisecond, func(){RaftMap[toServer].Receive(raft.ThisServerId,msg)})
-    }// else{
-		// drop the packet
-	//}*/
+// Source: Send() and Receive() - Prof. Sriram sir's answer on Piazza CS-733
+func (raft *Raft) Send(toServer int, msg interface{}) {
+	delay_prob := random(1, 100)
+	if delay_prob < 30 {
+		RaftMap[toServer].Receive(raft.ThisServerId, msg) //send directly
+	} else if delay_prob > 30 && delay_prob < 60 {
+		_ = time.AfterFunc(5*time.Millisecond, func() { RaftMap[toServer].Receive(raft.ThisServerId, msg) })
+	} else { //if delay_prob > 60 && delay_prob <90 {
+		_ = time.AfterFunc(10*time.Millisecond, func() { RaftMap[toServer].Receive(raft.ThisServerId, msg) })
+	} 
 }
-        
-func (raft *Raft) Receive(fromServer int, msg interface{}){
+
+func (raft *Raft) Receive(fromServer int, msg interface{}) {
 	// Put the msg on receiver's channel
 	raft.EventCh <- msg
 }
-
 
 func (raft *Raft) ClientSend(msg string) {
 	// Send the message on the EventCh of the destination server
 	raft.EventCh <- ClientAppend{msg}
 }
-
 
 // ErrRedirect as an Error object
 /*func (e ErrRedirect) Error string {
@@ -568,4 +568,4 @@ func (raft *Raft) ClientSend(msg string) {
 /*** TO DO LIST **/
 /* 1. PrevLogTerm problem
    4. Check definitions of lastlogindex and lastlogterm
-*/     
+*/
