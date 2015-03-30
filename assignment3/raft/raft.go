@@ -14,6 +14,9 @@ const (
 	leader    int = 3
 )
 
+const serverDown int = 9999 // just for testing
+type KillServer struct {} //just for testing
+
 var T int = 150 // Timeout between T and 2T
 var threshold = 3 // Threshold value for majority
 
@@ -83,6 +86,8 @@ func (x LogStruct) Term() int {
 // Raft setup
 type ServerConfig struct {
 	Id           int // Id of server. Must be unique
+	//client port
+	// log port
 }
 
 type ClusterConfig struct {
@@ -152,6 +157,8 @@ func (raft *Raft) Loop(w *sync.WaitGroup) {
 			state = raft.candidate()
 		case leader:
 			state = raft.leader()
+		case serverDown:		// Just the dummy case to kill the server for testing
+			return
 		default:
 			return
 		}
@@ -367,12 +374,13 @@ func (raft *Raft) leader() int {
 	var w sync.WaitGroup
 	responseCount := make(map[int]int)
 	lastIndex := raft.LastLogIndex
-	//fmt.Println(strconv.Itoa(raft.ThisServerId) + ": state:L event:leader electeddddddddddddddddddddddddddddddddd")
+	//fmt.Println(strconv.Itoa(raft.ThisServerId) + ": state:L event:leader elected")
 	//fmt.Println(raft.CurrentTerm)
 	// nextIndex contains next log entry to be sent to each server
 	nextIndex := []int{lastIndex+1,lastIndex+1,lastIndex+1,lastIndex+1,lastIndex+1} 
 	//matchIndex contains index of highest log entry known to be replicated for each server
 	matchIndex := []int{0,0,0,0,0} 
+
 	w.Add(1)
 	go func() {
 		defer w.Done()
@@ -457,6 +465,9 @@ func (raft *Raft) leader() int {
 					// Decrement the nextIndex and retry
 					nextIndex[msg.ServerId] = nextIndex[msg.ServerId] - 1
 			} 
+			case KillServer: 
+				raft.LeaderId = -1 //since the server is no more leader now
+				return serverDown
 		}
 	}
 	w.Wait()
