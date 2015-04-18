@@ -114,7 +114,6 @@ func handleSet(cmd kvCommand) {
 	kvmap.RLock()
 	if kvmap.key_values[cmd.data.Key].exptime != 0 {
 		kvmap.RUnlock()
-		//go exp_timer(cmd.data.Key, kvmap.Key_values)  // old one!
 		k := cmd.data.Key
 		timer := time.AfterFunc(time.Duration(cmd.data.Exptime) * time.Second,
 			func (){delete(kvmap.key_values,k)})
@@ -170,7 +169,7 @@ func handleGet(cmd kvCommand) {
 		instance := kvmap.key_values[cmd.data.Key]
 		kvmap.RUnlock()
 		ResponseCh <- Resp{cmd.lsn, []byte("VALUE "+strconv.Itoa(instance.numbytes)+"\r\n")}
-		ResponseCh <- Resp{cmd.lsn, instance.value}
+		ResponseCh <- Resp{cmd.lsn, []byte(string(instance.value)+"\r\n")}
 	} else {
 		kvmap.RUnlock()
 		ResponseCh <- Resp{cmd.lsn,[]byte("ERR_NOTFOUND\r\n")}
@@ -200,8 +199,7 @@ func handleDelete(cmd kvCommand) {
 
 	if presence {
 		kvmap.Lock()
-		arg := "one"
-		delete(kvmap.key_values, arg )//cmd.data.Key)
+		delete(kvmap.key_values,cmd.data.Key)
 		kvmap.Unlock()
 		ResponseCh <-Resp{cmd.lsn,[]byte("DELETED\r\n")}
 	} else {
