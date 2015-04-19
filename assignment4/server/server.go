@@ -88,7 +88,7 @@ func HandleClientConn(conn net.Conn, raftInst *raft.Raft){
 			if err != nil{ 
 				sendReply(conn, []byte(err.Error()+"\r\n"))
 			} else {
-				log.Println("Command Logged at Lsn:", logentry.Lsn()) 
+				//log.Println("Command Logged at Lsn:", logentry.Lsn()) 
 				responseMap[logentry.Lsn()] = conn  // store the conn object to reply later
 			}
 		}
@@ -196,7 +196,6 @@ func getClientCommand(conn net.Conn) (command []byte) {
 	var length_r, length_temp int
 	var newline_count int = 0
 	buffer := make([]byte, 512)
-	//buffer_temp := make([]byte, 512)
 	// Read the first packet to decide the course of the action
 	length_r, err = conn.Read(buffer[0:])
 	if err != nil {
@@ -250,49 +249,3 @@ func handleError(err error){
 		log.Fatal(err)
 	}
 }
-
-/*
-	// check whether if we have got \r\n and command is not set or cas command
-	if strings.Contains(string(buffer[0:length_r]), "\r\n") && !(CmdType =="set"|| CmdType == "cas"){
-		command = buffer[0:length_r]
-	} else if !(strings.Contains(string(buffer[0:length_r]), "\r\n")) && !(CmdType =="set"||CmdType =="cas"){
-		// In this case read the packets until CmdType==we get the "\r\n"
-		for {
-			length_temp, err = conn.Read(buffer_temp[0:])
-			if err != nil {
-				continue
-			}
-			buffer = append(buffer[0:length_r], buffer_temp[0:length_temp]...)
-			length_r = length_r + length_temp
-			if strings.Contains(string(buffer), "\r\n") {
-				break
-			} else {
-				continue
-			}
-		}
-		command = buffer[0:length_r]
-	} else {
-		if newline_count == 2 {
-			command = buffer[0:length_r]
-		} else {
-			// Otherwise go on reading until we get two "\r\n" characters
-			for {
-				if newline_count < 2 {
-					buffer_temp := make([]byte, 1024)
-					length_temp, err = conn.Read(buffer_temp[0:])
-					if err != nil {
-						continue
-					}
-					buffer = append(buffer[0:length_r], buffer_temp[0:length_temp]...)
-					length_r = length_r + length_temp
-					if strings.Contains(string(buffer), "\r\n") {
-						newline_count++
-					}
-				} else {
-					break
-				}
-			}
-			command = buffer[0:length_r]
-		}
-	}
-	return command*/

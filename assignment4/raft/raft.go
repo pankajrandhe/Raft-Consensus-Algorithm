@@ -209,7 +209,7 @@ func (raft *Raft) checkForCommit(leaderCommit int){
 		raft.CommitIndex = min(leaderCommit,len(raft.Log))
 		if raft.CommitIndex > raft.LastApplied {
 			raft.Log[raft.LastApplied+1].Log_commit = true
-			//raft.CommitCh <- *raft.Log[raft.LastApplied+1]
+			//raft.CommitCh <- *raft.Log[raft.LastApplied+1]  // for now only commit
 			raft.LastApplied = raft.LastApplied + 1
 			}
 		}
@@ -351,7 +351,7 @@ func (raft *Raft) follower() int {
 			}
 		case Timeout:
 			timer.Stop()
-			log.Println(raft.ThisServerId,"follower timeout")
+			//log.Println(raft.ThisServerId,"follower timeout")
 			return candidate 
 		}
 	}
@@ -360,7 +360,7 @@ func (raft *Raft) follower() int {
 func (raft *Raft) candidate() int {
 	votesReceived := 0
 	raft.CurrentTerm = raft.CurrentTerm + 1 // increment the current term
-	log.Println(raft.ThisServerId,":state = C term = ",raft.CurrentTerm)
+	//log.Println(raft.ThisServerId,":state = C term = ",raft.CurrentTerm)
 	votesReceived = votesReceived + 1 // vote for self
 	raft.VotedFor = raft.ThisServerId //set votedfor to candidate id
 
@@ -390,13 +390,13 @@ func (raft *Raft) candidate() int {
 			if msg.Vote {
 				votesReceived = votesReceived + 1 // increment the voteCount
 				if checkMajority(votesReceived) {
-					//timer.Stop()
+					timer.Stop()
 					return leader
 				}
 			} else {
 				raft.CurrentTerm = msg.Term
 				raft.VotedFor = -1
-				//timer.Stop()
+				timer.Stop()
 				return follower
 			}
 		case AppendRPC:
@@ -410,7 +410,7 @@ func (raft *Raft) candidate() int {
 				raft.CurrentTerm = msg.Term
 				raft.VotedFor = -1
 				raft.LeaderId = msg.LeaderId
-				//timer.Stop()				
+				timer.Stop()				
 				return follower
 			}
 		case VoteRequest:
@@ -419,11 +419,11 @@ func (raft *Raft) candidate() int {
 				//*log.Println(raft.ThisServerId,":state = C event = got higher term in VoteRequest")
 				raft.CurrentTerm = msg.Term
 				raft.VotedFor = -1
-				//timer.Stop()
+				timer.Stop()
 				return follower
 			}
 		case Timeout:
-			log.Println(raft.ThisServerId,": Candidte TimeOut")
+			//log.Println(raft.ThisServerId,": Candidte TimeOut")
 			timer.Stop()
 			return candidate  // start new election
 		}
@@ -435,7 +435,7 @@ func (raft *Raft) leader() int {
 	responseCount := make(map[int]int)
 	
 	lastIndex := len(raft.Log)//raft.LastLogIndex  //###### (Check, Modified)
-	log.Println(raft.ThisServerId,": state:L term:",raft.CurrentTerm," event:leader electeddddd")
+	//log.Println(raft.ThisServerId,": state:L term:",raft.CurrentTerm," event:leader electeddddd")
 	// nextIndex contains next log entry to be sent to each server
 	nextIndex := []int{lastIndex + 1, lastIndex + 1, lastIndex + 1, lastIndex + 1, lastIndex + 1}
 	//matchIndex contains index of highest log entry known to be replicated for each server
@@ -495,15 +495,14 @@ func (raft *Raft) leader() int {
 				raft.LeaderId = -1
 				return follower
 			}
-		/* have confusion here */
 		case VoteRequest:
 			// Check for leader's term, Return to follower state if the leader is legitimate
 			msg := ev.(VoteRequest)
 			if msg.Term > raft.CurrentTerm{
 				raft.CurrentTerm = msg.Term
 				raft.VotedFor = -1
-				log.Println(strconv.Itoa(raft.ThisServerId)+":leader returning to follower (higher term in Voterequest)")
-				log.Println("Voterequest = Term:",msg.Term," Sender: ",msg.CandidateId)
+				//log.Println(strconv.Itoa(raft.ThisServerId)+":leader returning to follower (higher term in Voterequest)")
+				//log.Println("Voterequest = Term:",msg.Term," Sender: ",msg.CandidateId)
 				close(quit) //to stop the ticker
 				raft.LeaderId = -1
 				return follower
@@ -514,6 +513,7 @@ func (raft *Raft) leader() int {
 			if msg.Term > raft.CurrentTerm{
 				raft.CurrentTerm = msg.Term
 				raft.LeaderId = -1
+				close(quit) //to stop the ticker (CHECK)
 				return follower
 			}
 			if msg.Success {
@@ -535,7 +535,7 @@ func (raft *Raft) leader() int {
 				}
 			} else {
 				// leader can fail in appending entry to follower due to log inconsistency
-				log.Println("got failure while appending from Server",msg.ServerId," ",len(raft.Log))
+				//log.Println("got failure while appending from Server",msg.ServerId," ",len(raft.Log))
 				nextIndex[msg.ServerId] = nextIndex[msg.ServerId] - 1  // Decrement the nextIndex and retry
 			}
 		}
@@ -577,7 +577,8 @@ func (raft *Raft) Send(toServer int, msg Msg) {
 	}	
 	err := enc.Encode(msg)
     if err != nil {
-        log.Fatal("encode error:", err)
+        //log.Fatal("encode error:", err)
+        // just don't send if remote server is dead!
     } 
 }
 
@@ -603,12 +604,12 @@ func (raft *Raft) HandleServerConn(conn net.Conn){
 		if err == nil{
 			raft.EventCh <- msg.Content
 		} else{
-			log.Fatal("Error Decode:",err," for server ",raft.ThisServerId)
+			//log.Fatal("Error Decode:",err," for server ",raft.ThisServerId)
 			continue
 		}
 	}
 	defer conn.Close()
-	log.Println("Closing conn for server")
+	//log.Println("Closing conn for server")
 }
 
 func (raft *Raft) OpenClientListener() (net.Listener){

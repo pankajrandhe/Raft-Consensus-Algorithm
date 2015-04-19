@@ -55,7 +55,7 @@ func KVloop(commitCh chan raft.LogStruct) {
 	for{
 		logentry := <- commitCh
 		if logentry.Committed(){
-			log.Println("Got commited entry at KV backend with Lsn:",logentry.Lsn(),"#####################")
+			//log.Println("Got commited entry at KV backend with Lsn:",logentry.Lsn(),"####")
 			parser(logentry)
 		} else{
 			continue
@@ -140,7 +140,6 @@ func handleCas(cmd kvCommand) {
 		kvmap.RLock()
 		if kvmap.key_values[cmd.data.Key].exptime != 0 {
 			kvmap.RUnlock()
-			//go exp_timer(string(cmd.data.Key), kvmap.Key_values)  // OLD APPROACH
 			t.Lock()
 			t.timerMap[cmd.data.Key].Reset(time.Duration(cmd.data.Exptime) * time.Second)  //Reset the timer taking the Key as an argument
 			t.Unlock()
@@ -173,7 +172,6 @@ func handleGet(cmd kvCommand) {
 			"\r\n"+
 			string(instance.value)+
 			"\r\n")}
-		//ResponseCh <- Resp{cmd.lsn, []byte(string(instance.value)+"\r\n")}
 	} else {
 		kvmap.RUnlock()
 		ResponseCh <- Resp{cmd.lsn,[]byte("ERR_NOTFOUND\r\n")}
@@ -192,7 +190,6 @@ func handleGetm(cmd kvCommand) {
 			"\r\n"+
 			string(instance.value)+
 			"\r\n")}
-		//ResponseCh <- Resp{cmd.lsn,instance.value}
 		kvmap.RUnlock()
 	} else {
 		kvmap.RUnlock()
@@ -220,7 +217,3 @@ func setVersion() (int) {
 	version := ver
 	return version
 }
-
-// TO DO list 
-// 2. Replying back mechanism to be checked ==> \r\n, errors
-// 3. Error handling (KV Errors) ==> validation
