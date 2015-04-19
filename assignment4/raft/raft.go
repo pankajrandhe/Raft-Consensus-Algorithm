@@ -17,7 +17,7 @@ const (
 	leader    int = 3
 )
 
-var T int = 1500 // Timeout between T and 2T
+var T int = 300 // Timeout between T and 2T
 var threshold = 3 // Threshold value for majority
 
 var RaftMap = make(map[int]*Raft)
@@ -201,6 +201,7 @@ func (raft *Raft) Loop() {
 			return
 		}
 	}
+	w.Wait()
 }
 
 func (raft *Raft) checkForCommit(leaderCommit int){
@@ -231,7 +232,7 @@ func (raft *Raft) follower() int {
 		case VoteRequest:
 			msg := ev.(VoteRequest)
 			toServer := raft.Cluster.Servers[msg.CandidateId].Id
-			notVotedCond := (raft.VotedFor==-1 || raft.VotedFor==msg.CandidateId)
+			notVotedCond := (raft.VotedFor==-1)// || raft.VotedFor==msg.CandidateId)
 			if msg.Term < raft.CurrentTerm{
 				raft.Send(toServer, Msg{VoteResponse{raft.ThisServerId, raft.CurrentTerm, false}})
 			} else if notVotedCond && raft.LastLogTerm != msg.LastLogTerm {
@@ -254,7 +255,9 @@ func (raft *Raft) follower() int {
 				}
 			}
 		case AppendRPC:
-			timer.Reset(time.Duration(random(T, 2*T)) * time.Millisecond) //reset timer
+			electionTimeOut := random(T, 2*T)
+			//log.Println("TO for ",raft.ThisServerId," ",electionTimeOut)
+			timer.Reset(time.Duration(electionTimeOut) * time.Millisecond) //reset timer
 			msg := ev.(AppendRPC)
 			if msg.Term < raft.CurrentTerm{   
 				err := AppendResponse{raft.CurrentTerm, raft.LastLogIndex, raft.ThisServerId, false}
@@ -265,6 +268,7 @@ func (raft *Raft) follower() int {
 
 			if msg.Msg == nil {  // HeartBeats
 				//log.Println(raft.ThisServerId," Got HB")
+				//timer.Reset(time.Duration(random(T, 2*T)) * time.Millisecond) //reset timer
 				raft.LeaderId = msg.LeaderId  // Update the Leader info
 				raft.checkForCommit(msg.LeaderCommit) 
 			} else {
@@ -347,6 +351,7 @@ func (raft *Raft) follower() int {
 			}
 		case Timeout:
 			timer.Stop()
+			log.Println(raft.ThisServerId,"follower timeout")
 			return candidate 
 		}
 	}
@@ -355,7 +360,7 @@ func (raft *Raft) follower() int {
 func (raft *Raft) candidate() int {
 	votesReceived := 0
 	raft.CurrentTerm = raft.CurrentTerm + 1 // increment the current term
-	//log.Println(raft.ThisServerId,":state = C term = ",raft.CurrentTerm)
+	log.Println(raft.ThisServerId,":state = C term = ",raft.CurrentTerm)
 	votesReceived = votesReceived + 1 // vote for self
 	raft.VotedFor = raft.ThisServerId //set votedfor to candidate id
 
@@ -385,21 +390,27 @@ func (raft *Raft) candidate() int {
 			if msg.Vote {
 				votesReceived = votesReceived + 1 // increment the voteCount
 				if checkMajority(votesReceived) {
+					//timer.Stop()
 					return leader
 				}
 			} else {
 				raft.CurrentTerm = msg.Term
 				raft.VotedFor = -1
+				//timer.Stop()
 				return follower
 			}
 		case AppendRPC:
 			// Check for leader's term, Return to follower state if the leader is legitimate
+			//log.Println(raft.ThisServerId," got HB")
+			timer.Reset(time.Duration(random(T, 2*T))*time.Millisecond)
 			msg := ev.(AppendRPC)
 			if msg.Term > raft.CurrentTerm {   //Checkkkkkkkkkkk for >= OR >
-				timer.Reset(time.Duration(random(T, 2*T))*time.Millisecond)
+				//log.Println(raft.ThisServerId," got HB")
+				//timer.Reset(time.Duration(random(T, 2*T))*time.Millisecond)
 				raft.CurrentTerm = msg.Term
 				raft.VotedFor = -1
 				raft.LeaderId = msg.LeaderId
+				//timer.Stop()				
 				return follower
 			}
 		case VoteRequest:
@@ -408,9 +419,12 @@ func (raft *Raft) candidate() int {
 				//*log.Println(raft.ThisServerId,":state = C event = got higher term in VoteRequest")
 				raft.CurrentTerm = msg.Term
 				raft.VotedFor = -1
+				//timer.Stop()
 				return follower
 			}
 		case Timeout:
+			log.Println(raft.ThisServerId,": Candidte TimeOut")
+			timer.Stop()
 			return candidate  // start new election
 		}
 	}
@@ -462,14 +476,12 @@ func (raft *Raft) leader() int {
 						prevLogTerm = raft.Log[prevLogIndex].Log_term
 					}
 					// Check if leader has got some data to send to follower server
+					msg := []byte(nil)
 					if len(raft.Log) >= nextIndex[server.Id] {
-						msg := raft.Log[nextIndex[server.Id]].Log_data
-						go raft.AppendEntries(server.Id,raft.CurrentTerm, raft.LeaderId, prevLogIndex, prevLogTerm, msg, raft.CommitIndex)
-					} else {
-						// Else send the HB
-						msg := []byte(nil)
-						go raft.AppendEntries(server.Id, raft.CurrentTerm, raft.LeaderId, prevLogIndex, prevLogTerm, msg, raft.CommitIndex)
-					}
+						msg = raft.Log[nextIndex[server.Id]].Log_data
+						//go raft.AppendEntries(server.Id,raft.CurrentTerm, raft.LeaderId, prevLogIndex, prevLogTerm, msg, raft.CommitIndex)
+					} 
+					go raft.AppendEntries(server.Id, raft.CurrentTerm, raft.LeaderId, prevLogIndex, prevLogTerm, msg, raft.CommitIndex)
 				}
 			}
 		case AppendRPC:
@@ -490,7 +502,8 @@ func (raft *Raft) leader() int {
 			if msg.Term > raft.CurrentTerm{
 				raft.CurrentTerm = msg.Term
 				raft.VotedFor = -1
-				//log.Println(strconv.Itoa(raft.ThisServerId)+": leader returning to follower (higher term in Voterequest)")
+				log.Println(strconv.Itoa(raft.ThisServerId)+":leader returning to follower (higher term in Voterequest)")
+				log.Println("Voterequest = Term:",msg.Term," Sender: ",msg.CandidateId)
 				close(quit) //to stop the ticker
 				raft.LeaderId = -1
 				return follower
@@ -514,8 +527,8 @@ func (raft *Raft) leader() int {
 					raft.Log[msg.Index].Log_commit = true
 					raft.CommitIndex = min(raft.CommitIndex + 1,len(raft.Log))  // Increment the CommitIndex
 					if raft.CommitIndex > raft.LastApplied {
-						log.Println("ResponseCount for ",msg.Index," is ",responseCount[msg.Index])
-						log.Println("Log length",len(raft.Log)," CommitIndex",raft.CommitIndex)
+						//log.Println("ResponseCount for ",msg.Index," is ",responseCount[msg.Index])
+						//log.Println("Log length",len(raft.Log)," CommitIndex",raft.CommitIndex)
 						raft.CommitCh <- *raft.Log[raft.LastApplied+1]  // put entry on the commit channel
 						raft.LastApplied = raft.LastApplied + 1
 					}
@@ -646,6 +659,7 @@ func (raft *Raft) Append(data []byte) (LogStruct, error) {
 
 // Source: "http://golangcookbook.blogspot.in/2012/11/generate-random-number-in-given-range.html"
 func random(min, max int) int {
+	rand.Seed(time.Now().UnixNano())
 	return rand.Intn(max-min) + min
 }
 

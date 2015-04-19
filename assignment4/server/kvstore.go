@@ -168,8 +168,12 @@ func handleGet(cmd kvCommand) {
 	if presence {
 		instance := kvmap.key_values[cmd.data.Key]
 		kvmap.RUnlock()
-		ResponseCh <- Resp{cmd.lsn, []byte("VALUE "+strconv.Itoa(instance.numbytes)+"\r\n")}
-		ResponseCh <- Resp{cmd.lsn, []byte(string(instance.value)+"\r\n")}
+		ResponseCh <- Resp{cmd.lsn, []byte("VALUE "+
+			strconv.Itoa(instance.numbytes)+
+			"\r\n"+
+			string(instance.value)+
+			"\r\n")}
+		//ResponseCh <- Resp{cmd.lsn, []byte(string(instance.value)+"\r\n")}
 	} else {
 		kvmap.RUnlock()
 		ResponseCh <- Resp{cmd.lsn,[]byte("ERR_NOTFOUND\r\n")}
@@ -181,10 +185,14 @@ func handleGetm(cmd kvCommand) {
 	_, presence := kvmap.key_values[cmd.data.Key]
 	if presence {
 		instance := kvmap.key_values[cmd.data.Key]
-		ResponseCh <- Resp{cmd.lsn,
-			[]byte("VALUE "+strconv.Itoa(instance.version)+" "+strconv.Itoa(instance.exptime)+" "+strconv.Itoa(instance.numbytes)+"\r\n"),
-		}
-		ResponseCh <- Resp{cmd.lsn,instance.value}
+		ResponseCh <- Resp{cmd.lsn,[]byte("VALUE "+
+			strconv.Itoa(instance.version)+" "+
+			strconv.Itoa(instance.exptime)+" "+
+			strconv.Itoa(instance.numbytes)+
+			"\r\n"+
+			string(instance.value)+
+			"\r\n")}
+		//ResponseCh <- Resp{cmd.lsn,instance.value}
 		kvmap.RUnlock()
 	} else {
 		kvmap.RUnlock()

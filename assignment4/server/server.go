@@ -45,7 +45,7 @@ func main() {
 	
 	go raftInst.StartServer()  		// start the raft-side of the server
 	go KVloop(commitCh) 			// start the KVstore backend
-	go toClientReplier(ResponseCh) 	// listens from the reply from KV backend 
+	go toClientReplier(ResponseCh) 	// listen from the reply from KV backend 
 
 	var w sync.WaitGroup
 	clientListener := raftInst.OpenClientListener() // start listening for the clients
@@ -54,7 +54,7 @@ func main() {
 		for {
 			clientConn, err := clientListener.Accept()
 			if err != nil {
-				log.Fatal(err)
+				//log.Fatal(err)
 				continue
 			}
 			go HandleClientConn(clientConn, raftInst)
@@ -74,7 +74,9 @@ func toClientReplier(ResponseCh chan Resp){
 
 func sendReply(conn net.Conn, data []byte){
 	_,err := conn.Write(data)
-	handleError(err)
+	if err != nil{
+		// just neglect the error
+	}
 }
 
 func HandleClientConn(conn net.Conn, raftInst *raft.Raft){
@@ -106,7 +108,7 @@ func HandleClientConn(conn net.Conn, raftInst *raft.Raft){
 			dummyLsn = dummyLsn + 1
 		}*/
 	}  
-	//defer conn.Close()
+	//defer conn.Close()   // to safely close the connection
 }
 
 func cmdParser(data []byte) ([]byte){
