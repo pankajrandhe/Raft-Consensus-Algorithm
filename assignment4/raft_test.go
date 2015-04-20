@@ -213,7 +213,7 @@ func setSingleClient(t *testing.T, doneCh *chan bool, addr string) {
 }
 
 func searchLeader() int {
-	var leaderId int
+	var leaderId int = 0
 	leaderCPort := 9000 // assumed leader's client port
 	for {
 		//connection,err := DialConnection(":" + strconv.Itoa(leaderCPort))
