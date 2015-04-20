@@ -209,7 +209,7 @@ func (raft *Raft) checkForCommit(leaderCommit int) {
 		raft.CommitIndex = min(leaderCommit, len(raft.Log))
 		if raft.CommitIndex > raft.LastApplied {
 			raft.Log[raft.LastApplied+1].Log_commit = true
-			//raft.CommitCh <- *raft.Log[raft.LastApplied+1]  // for now only commit
+			raft.CommitCh <- *raft.Log[raft.LastApplied+1]  
 			raft.LastApplied = raft.LastApplied + 1
 		}
 	}
@@ -307,7 +307,7 @@ func (raft *Raft) follower() int {
 							err := AppendResponse{raft.CurrentTerm, raft.LastLogIndex, raft.ThisServerId, false}
 							raft.Send(msg.LeaderId, Msg{err})
 						}
-					} else if len(raft.Log) > msg.PrevLogIndex { // have to truncate (CHECK THIS BLOCK)
+					} //else if len(raft.Log) > msg.PrevLogIndex { // have to truncate (CHECK THIS BLOCK)
 						//* THIS IS LOGIC FOR LOG REPAIRING, COMMENTED BECAUSE THERE ARE NO TESTS FOR IT*//
 
 						/*log.Println(raft.ThisServerId," logLength:",len(raft.Log)," prevLogindex:",msg.PrevLogIndex)
@@ -347,7 +347,7 @@ func (raft *Raft) follower() int {
 							ok := AppendResponse{raft.LastLogTerm, raft.LastLogIndex, raft.ThisServerId, true}
 							raft.Send(msg.LeaderId, Msg{ok})
 						}*/
-					}
+					//}
 				} else if msg.PrevLogIndex > len(raft.Log) { //my log is lagging, send me previous entries
 					err := AppendResponse{raft.CurrentTerm, raft.LastLogIndex, raft.ThisServerId, false}
 					raft.Send(msg.LeaderId, Msg{err})

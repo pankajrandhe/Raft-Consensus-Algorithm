@@ -129,7 +129,7 @@ func TestBasicCommands(t *testing.T){
 		t.Error(match_err)
 	}
 
-	//testcase#7 CAS command
+	//testcase#8 CAS command
 	sendToServer(connection, "cas three 0 123453 10\r\nval#three\r\n")
 	data = <-ch
 	matched,_ = regexp.MatchString("ERR_VERSION\r\n", string(data))
@@ -137,7 +137,7 @@ func TestBasicCommands(t *testing.T){
 		t.Error(match_err)
 	}
 
-	//testcase#8 SET command
+	//testcase#9 SET command
 	sendToServer(connection, "set five 2 10\r\nval#five\r\n")
 	data = <-ch
 	matched,_ = regexp.MatchString("OK.*", string(data))
@@ -145,7 +145,7 @@ func TestBasicCommands(t *testing.T){
 		t.Error(match_err)
 	}
 
-	//testcase#9 GET command (value should get cleared after 2 secs)
+	//testcase#10 GET command (value should get cleared after 2 secs)
 	//sleep for 2 secs
 	time.Sleep(time.Duration(2)*time.Second)
 	sendToServer(connection, "delete five\r\n")

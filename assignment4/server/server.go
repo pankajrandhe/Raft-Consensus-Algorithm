@@ -44,7 +44,7 @@ func main() {
 
 	go raftInst.StartServer()      // start the raft-side of the server
 	go KVloop(commitCh)            // start the KVstore backend
-	go toClientReplier(ResponseCh) // listen from the reply from KV backend
+	go toClientReplier(raftInst,ResponseCh) // listen from the reply from KV backend
 
 	var w sync.WaitGroup
 	clientListener := raftInst.OpenClientListener() // start listening for the clients
@@ -63,11 +63,13 @@ func main() {
 	w.Wait()
 }
 
-func toClientReplier(ResponseCh chan Resp) {
+func toClientReplier(raftInst *raft.Raft, ResponseCh chan Resp) {
 	for {
 		reply := <-ResponseCh
-		// find lsn and respective conn. from map to reply back to client
-		sendReply(responseMap[reply.lsn], reply.data)
+		// find lsn and respective conn. from map to reply back to client if the server is leader
+		if raftInst.ThisServerId == raftInst.LeaderId{
+			sendReply(responseMap[reply.lsn], reply.data)
+		}
 	}
 }
 
