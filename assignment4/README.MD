@@ -70,10 +70,11 @@ Server responds with:
  
 ### References ###
 * [In Search of an Understandable Consensus Algorithm](https://ramcloud.stanford.edu/raft.pdf) by Diego Ongaro and John Ousterhout, Stanford University.
-* [Generating random number in given range](http://golangcookbook.blogspot.in/2012/11/generate-random-number-in-given-range.html)
+* [Generating random number in a given range](http://golangcookbook.blogspot.in/2012/11/generate-random-number-in-given-range.html)
 * [File Append Operations](http://stackoverflow.com/questions/7151261/append-to-a-file-in-go?lq=1)
+* [Ticker Implementation](http://stackoverflow.com/questions/16466320/is-there-a-way-to-do-repetitive-tasks-at-intervals-in-golang)
 * Discussions with Prof. Sriram Srinivasan
-* Help from friends: Abhishek Potnis, Bhavesh Singh, Saurabh Hote and discussions on Piazza forum for CS733.
+* Help from friends: Abhishek Potnis, Bhavesh Singh, Dushyant Sabharwal, Saurabh Hote and discussions on Piazza forum for CS733.
   
    
  

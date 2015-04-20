@@ -1,12 +1,12 @@
 package main
 
 import (
-	"github.com/pankajrandhe/cs733/assignment4/raft"
 	"encoding/json"
+	"github.com/pankajrandhe/cs733/assignment4/raft"
+	"log"
 	"strconv"
 	"sync"
 	"time"
-	"log"
 )
 
 var ver int = 0
@@ -23,11 +23,11 @@ var t = struct {
 	timerMap map[string]*time.Timer
 }{timerMap: make(map[string]*time.Timer)}
 
-const(
-	Set string = "set"
-	Get string = "get"
-	Getm string = "getm"
-	Cas string = "cas"
+const (
+	Set    string = "set"
+	Get    string = "get"
+	Getm   string = "getm"
+	Cas    string = "cas"
 	Delete string = "delete"
 )
 
@@ -40,39 +40,39 @@ type kvEntity struct {
 }
 
 // this is passed to the cmd-handler (lsn reqd. for replying back)
-type kvCommand struct{
-	lsn int
+type kvCommand struct {
+	lsn  int
 	data CmdWrapper
 }
 
-type Resp struct{
-	lsn int 
+type Resp struct {
+	lsn  int
 	data []byte
 }
 
 func KVloop(commitCh chan raft.LogStruct) {
 	// keep listening on the commit channel
-	for{
-		logentry := <- commitCh
-		if logentry.Committed(){
+	for {
+		logentry := <-commitCh
+		if logentry.Committed() {
 			//log.Println("Got commited entry at KV backend with Lsn:",logentry.Lsn(),"####")
 			parser(logentry)
-		} else{
+		} else {
 			continue
 		}
 	}
 }
 
-func parser(logentry raft.LogStruct){
+func parser(logentry raft.LogStruct) {
 	cmdLsn := (logentry).Lsn()
 	// Decode the cmdData of type []byte to type CmdWrapper
-	var cmdData CmdWrapper 
-	err := json.Unmarshal(logentry.Data(),&cmdData)
-	if err != nil{
+	var cmdData CmdWrapper
+	err := json.Unmarshal(logentry.Data(), &cmdData)
+	if err != nil {
 		log.Fatal(err)
 	} else {
 		// pack the data and send to command handler
-		commandHandler(kvCommand{cmdLsn,cmdData})
+		commandHandler(kvCommand{cmdLsn, cmdData})
 	}
 }
 
@@ -89,36 +89,36 @@ func commandHandler(command kvCommand) {
 	case Delete:
 		handleDelete(command)
 	default:
-		ResponseCh <- Resp{command.lsn,[]byte("ERR_CMD_ERR\r\n")}
+		ResponseCh <- Resp{command.lsn, []byte("ERR_CMD_ERR\r\n")}
 	}
 }
 
 func handleSet(cmd kvCommand) {
 	instance := kvEntity{
-		value : cmd.data.Value,
-		exptime : cmd.data.Exptime,
-		numbytes : cmd.data.Numbytes,
-		version : setVersion(),
+		value:    cmd.data.Value,
+		exptime:  cmd.data.Exptime,
+		numbytes: cmd.data.Numbytes,
+		version:  setVersion(),
 	}
-	// Put the info into kvstore	
+	// Put the info into kvstore
 	kvmap.Lock()
 	kvmap.key_values[cmd.data.Key] = &instance
 	kvmap.Unlock()
 
-	if !cmd.data.Noreply{ // when noreply is false
+	if !cmd.data.Noreply { // when noreply is false
 		kvmap.RLock()
-		ResponseCh <- Resp{cmd.lsn,[]byte("OK "+strconv.Itoa(kvmap.key_values[cmd.data.Key].version)+"\r\n")}
+		ResponseCh <- Resp{cmd.lsn, []byte("OK " + strconv.Itoa(kvmap.key_values[cmd.data.Key].version) + "\r\n")}
 		kvmap.RUnlock()
 	}
-	
+
 	kvmap.RLock()
 	if kvmap.key_values[cmd.data.Key].exptime != 0 {
 		kvmap.RUnlock()
 		k := cmd.data.Key
-		timer := time.AfterFunc(time.Duration(cmd.data.Exptime) * time.Second,
-			func (){delete(kvmap.key_values,k)})
+		timer := time.AfterFunc(time.Duration(cmd.data.Exptime)*time.Second,
+			func() { delete(kvmap.key_values, k) })
 		t.Lock()
-		t.timerMap[k] = timer  // so as to reset the timer later on
+		t.timerMap[k] = timer // so as to reset the timer later on
 		t.Unlock()
 	} else {
 		kvmap.RUnlock()
@@ -141,7 +141,7 @@ func handleCas(cmd kvCommand) {
 		if kvmap.key_values[cmd.data.Key].exptime != 0 {
 			kvmap.RUnlock()
 			t.Lock()
-			t.timerMap[cmd.data.Key].Reset(time.Duration(cmd.data.Exptime) * time.Second)  //Reset the timer taking the Key as an argument
+			t.timerMap[cmd.data.Key].Reset(time.Duration(cmd.data.Exptime) * time.Second) //Reset the timer taking the Key as an argument
 			t.Unlock()
 		} else {
 			kvmap.RUnlock()
@@ -150,13 +150,13 @@ func handleCas(cmd kvCommand) {
 		if !cmd.data.Noreply { //need to reply
 			kvmap.RLock()
 			ResponseCh <- Resp{cmd.lsn,
-				[]byte("OK "+strconv.Itoa(kvmap.key_values[cmd.data.Key].version)+"\r\n"),
+				[]byte("OK " + strconv.Itoa(kvmap.key_values[cmd.data.Key].version) + "\r\n"),
 			}
 			kvmap.RUnlock()
 		}
 	} else {
 		kvmap.RUnlock()
-		ResponseCh <- Resp{cmd.lsn,[]byte("ERR_VERSION\r\n")}
+		ResponseCh <- Resp{cmd.lsn, []byte("ERR_VERSION\r\n")}
 	}
 
 }
@@ -167,14 +167,14 @@ func handleGet(cmd kvCommand) {
 	if presence {
 		instance := kvmap.key_values[cmd.data.Key]
 		kvmap.RUnlock()
-		ResponseCh <- Resp{cmd.lsn, []byte("VALUE "+
-			strconv.Itoa(instance.numbytes)+
-			"\r\n"+
-			string(instance.value)+
+		ResponseCh <- Resp{cmd.lsn, []byte("VALUE " +
+			strconv.Itoa(instance.numbytes) +
+			"\r\n" +
+			string(instance.value) +
 			"\r\n")}
 	} else {
 		kvmap.RUnlock()
-		ResponseCh <- Resp{cmd.lsn,[]byte("ERR_NOTFOUND\r\n")}
+		ResponseCh <- Resp{cmd.lsn, []byte("ERR_NOTFOUND\r\n")}
 	}
 }
 
@@ -183,17 +183,17 @@ func handleGetm(cmd kvCommand) {
 	_, presence := kvmap.key_values[cmd.data.Key]
 	if presence {
 		instance := kvmap.key_values[cmd.data.Key]
-		ResponseCh <- Resp{cmd.lsn,[]byte("VALUE "+
-			strconv.Itoa(instance.version)+" "+
-			strconv.Itoa(instance.exptime)+" "+
-			strconv.Itoa(instance.numbytes)+
-			"\r\n"+
-			string(instance.value)+
+		ResponseCh <- Resp{cmd.lsn, []byte("VALUE " +
+			strconv.Itoa(instance.version) + " " +
+			strconv.Itoa(instance.exptime) + " " +
+			strconv.Itoa(instance.numbytes) +
+			"\r\n" +
+			string(instance.value) +
 			"\r\n")}
 		kvmap.RUnlock()
 	} else {
 		kvmap.RUnlock()
-		ResponseCh <- Resp{cmd.lsn,[]byte("ERR_NOTFOUND\r\n")}
+		ResponseCh <- Resp{cmd.lsn, []byte("ERR_NOTFOUND\r\n")}
 	}
 }
 
@@ -204,16 +204,16 @@ func handleDelete(cmd kvCommand) {
 
 	if presence {
 		kvmap.Lock()
-		delete(kvmap.key_values,cmd.data.Key)
+		delete(kvmap.key_values, cmd.data.Key)
 		kvmap.Unlock()
-		ResponseCh <-Resp{cmd.lsn,[]byte("DELETED\r\n")}
+		ResponseCh <- Resp{cmd.lsn, []byte("DELETED\r\n")}
 	} else {
-		ResponseCh <- Resp{cmd.lsn,[]byte("ERR_NOTFOUND\r\n")}
+		ResponseCh <- Resp{cmd.lsn, []byte("ERR_NOTFOUND\r\n")}
 	}
 }
 
-func setVersion() (int) {
-	ver = ver+1
+func setVersion() int {
+	ver = ver + 1
 	version := ver
 	return version
 }
