@@ -21,11 +21,3 @@ the state machine.
 ### TO DO ###
 * To add more test cases to achieve leader change.
 * Message dropping in inter-server communication.
-
-
-  
-   
-   
- 
- 
- 
