@@ -308,7 +308,7 @@ func (raft *Raft) follower() int {
 							raft.Send(msg.LeaderId, Msg{err})
 						}
 					} //else if len(raft.Log) > msg.PrevLogIndex { // have to truncate (CHECK THIS BLOCK)
-						//* FOR LOG REPAIRING AFTER SERVER CRASH *//
+						//* FOR LOG REPAIRING AFTER SERVER CRASHES *//
 
 						/*log.Println(raft.ThisServerId," logLength:",len(raft.Log)," prevLogindex:",msg.PrevLogIndex)
 						var preTerm int  //(CHECK)
