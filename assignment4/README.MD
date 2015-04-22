@@ -37,6 +37,7 @@ Server responds with:
 Server responds with:
 
 `VALUE <numbytes>\r\n`
+
 `<value bytes>\r\n`
 
 * GETM command
@@ -46,6 +47,7 @@ Server responds with:
 Server responds with:
 
 `VALUE <version> <exptime> <numbytes>\r\n`
+
 `<value bytes>\r\n`
 
 * CAS command
