@@ -2,7 +2,7 @@ Raft Consensus Algorithm
 =============================
 
 ### Overview ###
-[Raft](https://ramcloud.stanford.edu/raft.pdf) is a consensus algorithm for managing the replicated log over a cluster of servers in a consistent state. This project is an implementation of the Replicated Key-Value Store on top of the Raft Consensus Protocol. This repository contains the assignments for course "CS-733 Engineering the Cloud- Advanced Distributed Computing" offred at IIT Bombay.
+[Raft](https://ramcloud.stanford.edu/raft.pdf) is a consensus algorithm for managing the replicated log over a cluster of servers in a consistent state. This project is an implementation of the Replicated Key-Value Store on top of the Raft Consensus Protocol. This repository contains the assignments for the course "CS-733 Engineering the Cloud- Advanced Distributed Computing" offered at IIT Bombay.
 
 ### Project Structure ###
 The project at its core has two parallels, one is the Raft side and other is the Key-Value Store. These parallels run as Go-routines and communicate among themselves via channel.
