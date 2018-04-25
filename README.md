@@ -22,51 +22,51 @@ Following are the commands which Key-Value store accepts from the client.
 
 * SET command 
 
-`set <key> <exptime> <numbytes> [noreply]\r\n`
+   `set <key> <exptime> <numbytes> [noreply]\r\n`
 
-`<value bytes>\r\n`
+   `<value bytes>\r\n`
 
-Server responds with:
+   Server responds with:
 
-`OK <version>\r\n`
+   `OK <version>\r\n`
 
 * GET command
 
-`get <key>\r\n`
+   `get <key>\r\n`
 
-Server responds with:
+   Server responds with:
 
-`VALUE <numbytes>\r\n`
+   `VALUE <numbytes>\r\n`
 
-`<value bytes>\r\n`
+   `<value bytes>\r\n`
 
 * GETM command
 
-`getm <key>\r\n`
+   `getm <key>\r\n`
 
-Server responds with:
+   Server responds with:
 
-`VALUE <version> <exptime> <numbytes>\r\n`
+   `VALUE <version> <exptime> <numbytes>\r\n`
 
-`<value bytes>\r\n`
+   `<value bytes>\r\n`
 
 * CAS command
 
-`cas <key> <exptime> <version> <numbytes> [noreply]\r\n`
+   `cas <key> <exptime> <version> <numbytes> [noreply]\r\n`
 
-`<value bytes>\r\n`
+   `<value bytes>\r\n`
 
-Server responds with:
+   Server responds with:
 
-`OK <version>\r\n`
+   `OK <version>\r\n`
 
 * DELETE command
 
-`delete <key>\r\n`
+   `delete <key>\r\n`
 
-Server responds with:
+   Server responds with:
 
-`DELETED\r\n`
+   `DELETED\r\n`
 
 ### BUGS ###
 * The project has not yet been tested for the log-reapair test cases.
@@ -79,7 +79,3 @@ Server responds with:
 * Discussions with Prof. Sriram Srinivasan
 * Help from friends: Abhishek Potnis, Bhavesh Singh, Dushyant Sabharwal, Saurabh Hote and discussions on Piazza forum for CS733.
   
-   
- 
- 
- 
